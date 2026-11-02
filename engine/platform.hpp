@@ -53,6 +53,8 @@ void key_event_from_sdl(int sdl_keycode, int sdl_mod, InputEvent& ev);
 
 // Thor RA2: a scene that draws its own cursor this frame calls this before present().
 void platform_scene_draws_cursor();
+// Thor RA2: physical pixels per logical pixel (0 = unknown).
+double platform_output_scale();
 
 class Platform : public EventSource {
 public:

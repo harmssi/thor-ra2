@@ -5063,11 +5063,24 @@ SDL_Texture* shp_frame_tex(ra2engine::TextureCache& tc, const std::string& key,
 // brief flagged. So draw_fnt_text is given a SYNTHETIC ramp palette built here:
 // index 0 transparent (handled by TextureCache::get), 1.. mapped to a warm
 // metallic gold gradient that reads as the RA2 bevelled menu face.
+#if defined(__ANDROID__)
+// Thor RA2: a logical coordinate rounded to the nearest whole DEVICE pixel.
+static inline float thor_snap(double v) {
+    const double k = ra2engine::platform_output_scale();
+    return k > 0.0 ? static_cast<float>(std::round(v * k) / k) : static_cast<float>(v);
+}
+#endif
 ra2assets::Palette make_font_palette() {
     ra2assets::Palette p;
     for (int i = 0; i < 256; ++i) {
         int lvl = 40 + i * 55;                 // 1->95, 2->150, 3->205, 4->255...
         if (lvl > 255) lvl = 255;
+#if defined(__ANDROID__)
+        // Thor RA2: the shell font's glyph BODY is index 1 and its edge the higher
+        // indices; the ramp above made the body the darkest shade (hollow, hard to
+        // read letters on the red buttons at 3x). Solid gold body, darker edge.
+        lvl = i <= 1 ? 255 : std::max(70, 255 - (i - 1) * 70);
+#endif
         p[i] = ra2assets::Rgba{static_cast<uint8_t>(lvl),
                                static_cast<uint8_t>(lvl * 92 / 100),
                                static_cast<uint8_t>(lvl * 55 / 100), 255};
@@ -5083,6 +5096,9 @@ ra2assets::Palette make_font_palette_tinted(int r, int g, int b) {
     for (int i = 0; i < 256; ++i) {
         int lvl = 40 + i * 55;
         if (lvl > 255) lvl = 255;
+#if defined(__ANDROID__)
+        lvl = i <= 1 ? 255 : std::max(70, 255 - (i - 1) * 70);   // Thor RA2: solid body (see above)
+#endif
         p[i] = ra2assets::Rgba{static_cast<uint8_t>(r * lvl / 255),
                                static_cast<uint8_t>(g * lvl / 255),
                                static_cast<uint8_t>(b * lvl / 255), 255};
@@ -5119,8 +5135,15 @@ void draw_fnt_text(SDL_Renderer* ren, ra2engine::TextureCache& tc, const ra2asse
                 SDL_Texture* tex = static_cast<SDL_Texture*>(tc.peek(key));
                 if (!tex)
                     tex = static_cast<SDL_Texture*>(tc.get(key, g.pixels.data(), g.w, g.h, pal));
+#if defined(__ANDROID__)
+                // Thor RA2: whole device pixels (the canvas is scaled 1.5x to the panel).
+                const SDL_FRect dst{thor_snap(cx), thor_snap(y), static_cast<float>(g.w * scale),
+                                    static_cast<float>(g.h * scale)};
+                SDL_RenderCopyF(ren, tex, nullptr, &dst);
+#else
                 SDL_Rect dst{cx, y, g.w * scale, g.h * scale};
                 SDL_RenderCopy(ren, tex, nullptr, &dst);
+#endif
             }
         }
         cx += (w > 0 ? w : font.height() / 2) * scale;   // space/missing glyph advance
@@ -5133,6 +5156,12 @@ void draw_fnt_text(SDL_Renderer* ren, ra2engine::TextureCache& tc, const ra2asse
 void draw_fnt_text_f(SDL_Renderer* ren, ra2engine::TextureCache& tc, const ra2assets::Font& font,
                      const ra2assets::Palette& pal, const std::string& s, double x, double y,
                      const std::string& keypfx, double scale) {
+#if defined(__ANDROID__)
+    {   // Thor RA2: a whole number of device pixels per glyph pixel (even strokes).
+        const double k = ra2engine::platform_output_scale();
+        if (k > 0.0) scale = std::max(1.0, std::round(scale * k)) / k;
+    }
+#endif
     double cx = x;
     for (unsigned char ch : s) {
         const int w = font.width(ch);
@@ -5143,11 +5172,17 @@ void draw_fnt_text_f(SDL_Renderer* ren, ra2engine::TextureCache& tc, const ra2as
                 SDL_Texture* tex = static_cast<SDL_Texture*>(tc.peek(key));
                 if (!tex)
                     tex = static_cast<SDL_Texture*>(tc.get(key, g.pixels.data(), g.w, g.h, pal));
+#if defined(__ANDROID__)
+                const SDL_FRect dst{thor_snap(cx), thor_snap(y), static_cast<float>(g.w * scale),
+                                    static_cast<float>(g.h * scale)};
+                SDL_RenderCopyF(ren, tex, nullptr, &dst);
+#else
                 const int x0 = static_cast<int>(std::lround(cx));
                 const int x1 = static_cast<int>(std::lround(cx + g.w * scale));
                 SDL_Rect dst{x0, static_cast<int>(std::lround(y)), x1 - x0,
                              static_cast<int>(std::lround(g.h * scale))};
                 SDL_RenderCopy(ren, tex, nullptr, &dst);
+#endif
             }
         }
         cx += (w > 0 ? w : font.height() / 2) * scale;

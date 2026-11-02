@@ -11,6 +11,12 @@
 
 namespace ra2engine {
 
+// Thor RA2: physical / logical pixel ratio of the current canvas (e.g. 1.5 for
+// 1280x720 on a 1920x1080 panel); 0 = unknown. ShellXform snaps the 640x480
+// shell pages to a whole-number device scale with it (crisp menu text).
+static double g_output_scale = 0.0;
+double platform_output_scale() { return g_output_scale; }
+
 struct Platform::Impl {
     SDL_Window* window = nullptr;
     SDL_Renderer* renderer = nullptr;
@@ -104,6 +110,11 @@ struct Platform::Impl {
     // dropped while the app is in the background, for 1 s after it returns
     // when the last pointer was a finger, and a button-less motion exactly at
     // the window corner right after a finger.
+    void update_output_scale() {
+        int ow = 0, oh = 0;
+        if (renderer && h > 0 && SDL_GetRendererOutputSize(renderer, &ow, &oh) == 0 && oh > 0)
+            g_output_scale = static_cast<double>(oh) / h;
+    }
     bool background = false;
     uint32_t foreground_at = 0;
     bool last_touch = false;
@@ -118,6 +129,7 @@ struct Platform::Impl {
     // dp on a 420-dpi phone, so a rolling fingertip turned taps into
     // ignored drags. Never below the old 12 px; desktop unchanged.
     void update_slop() {
+        update_output_scale();
 #ifdef __ANDROID__
         float ddpi = 0.0f;
         int ow = 0, oh = 0;
