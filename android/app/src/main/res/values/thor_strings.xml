@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Thor RA2: command deck (bottom screen). -->
+<resources>
+    <string name="deck_credits">CREDITS</string>
+    <string name="deck_power">POWER</string>
+    <string name="deck_low_power">LOW POWER</string>
+    <string name="deck_output_drain">OUTPUT / DRAIN</string>
+    <string name="deck_radar">RADAR</string>
+    <string name="deck_online">ONLINE</string>
+    <string name="deck_offline">OFFLINE</string>
+    <string name="deck_no_signal">NO SIGNAL</string>
+    <string name="deck_radar_hint">Build a radar to see the map</string>
+    <string name="deck_radar_power_hint">Radar offline: not enough power</string>
+    <string name="deck_repair">REPAIR</string>
+    <string name="deck_sell">SELL</string>
+    <string name="deck_menu">MENU</string>
+    <string name="deck_tab_buildings">BUILDINGS</string>
+    <string name="deck_tab_defense">DEFENSE</string>
+    <string name="deck_tab_infantry">INFANTRY</string>
+    <string name="deck_tab_vehicles">VEHICLES</string>
+    <string name="deck_nothing">Nothing to build here yet</string>
+    <string name="deck_ready">READY</string>
+    <string name="deck_on_hold">ON HOLD</string>
+    <string name="deck_super">SUPERWEAPONS</string>
+    <string name="deck_mode_place">PLACE</string>
+    <string name="deck_mode_target">TARGET</string>
+    <string name="deck_mode_repair">REPAIR</string>
+    <string name="deck_mode_sell">SELL</string>
+    <string name="deck_mode_paused">PAUSED</string>
+    <string name="deck_side_allies">ALLIES</string>
+    <string name="deck_side_soviet">SOVIETS</string>
+    <string name="deck_h_place">Place the building</string>
+    <string name="deck_d_place">Tap the map on the top screen. Long-press there to cancel.</string>
+    <string name="deck_h_target">Pick a target</string>
+    <string name="deck_d_target">Tap the target on the top screen.</string>
+    <string name="deck_h_repair">Repair mode</string>
+    <string name="deck_d_repair">Tap a building on the top screen. Tap REPAIR again to stop.</string>
+    <string name="deck_h_sell">Sell mode</string>
+    <string name="deck_d_sell">Tap a building on the top screen. Tap SELL again to stop.</string>
+    <string name="deck_h_ready">Ready for orders</string>
+    <string name="deck_d_ready">Tap a cameo to build, tap a READY building to place it. Long-press = hold, then cancel. L1 / R1 switch tabs.</string>
+    <string name="deck_d_action">Order sent</string>
+    <string name="deck_act_hold">Hold: %1$s</string>
+    <string name="deck_act_cancel">Cancel: %1$s</string>
+    <string name="deck_act_place">Place: %1$s</string>
+    <string name="deck_standby">STANDBY</string>
+    <string name="deck_standby_hint">The deck comes online when a game starts.</string>
+    <string name="sw_nuke">Nuclear Missile</string>
+    <string name="sw_iron_curtain">Iron Curtain</string>
+    <string name="sw_weather">Weather Control</string>
+    <string name="sw_chrono">Chronosphere</string>
+    <string name="sw_paradrop">Paradrop</string>
+    <string name="sw_dominator">Psychic Dominator</string>
+    <string name="sw_spyplane">Spy Plane</string>
+    <string name="sw_genetic">Genetic Mutator</string>
+    <string name="sw_shield">Force Shield</string>
+</resources>

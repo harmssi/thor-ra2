@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Thor RA2: command deck (bottom screen). -->
+<resources>
+    <string name="deck_credits">CREDITS</string>
+    <string name="deck_power">STROM</string>
+    <string name="deck_low_power">STROM KNAPP</string>
+    <string name="deck_output_drain">ERZEUGUNG / BEDARF</string>
+    <string name="deck_radar">RADAR</string>
+    <string name="deck_online">AKTIV</string>
+    <string name="deck_offline">AUS</string>
+    <string name="deck_no_signal">KEIN SIGNAL</string>
+    <string name="deck_radar_hint">Radar bauen, um die Karte zu sehen</string>
+    <string name="deck_radar_power_hint">Radar aus: zu wenig Strom</string>
+    <string name="deck_repair">REPARIEREN</string>
+    <string name="deck_sell">VERKAUFEN</string>
+    <string name="deck_menu">MENÜ</string>
+    <string name="deck_tab_buildings">GEBÄUDE</string>
+    <string name="deck_tab_defense">VERTEIDIGUNG</string>
+    <string name="deck_tab_infantry">INFANTERIE</string>
+    <string name="deck_tab_vehicles">FAHRZEUGE</string>
+    <string name="deck_nothing">Hier gibt es noch nichts zu bauen</string>
+    <string name="deck_ready">BEREIT</string>
+    <string name="deck_on_hold">ANGEHALTEN</string>
+    <string name="deck_super">SUPERWAFFEN</string>
+    <string name="deck_mode_place">PLATZIEREN</string>
+    <string name="deck_mode_target">ZIEL WÄHLEN</string>
+    <string name="deck_mode_repair">REPARATUR</string>
+    <string name="deck_mode_sell">VERKAUF</string>
+    <string name="deck_mode_paused">PAUSE</string>
+    <string name="deck_side_allies">ALLIIERTE</string>
+    <string name="deck_side_soviet">SOWJETS</string>
+    <string name="deck_h_place">Gebäude platzieren</string>
+    <string name="deck_d_place">Oben auf die Karte tippen. Dort lange drücken bricht ab.</string>
+    <string name="deck_h_target">Ziel wählen</string>
+    <string name="deck_d_target">Oben auf das Ziel tippen.</string>
+    <string name="deck_h_repair">Reparaturmodus</string>
+    <string name="deck_d_repair">Oben auf ein Gebäude tippen. REPARIEREN erneut tippen zum Beenden.</string>
+    <string name="deck_h_sell">Verkaufsmodus</string>
+    <string name="deck_d_sell">Oben auf ein Gebäude tippen. VERKAUFEN erneut tippen zum Beenden.</string>
+    <string name="deck_h_ready">Bereit für Befehle</string>
+    <string name="deck_d_ready">Cameo tippen = bauen, BEREIT-Gebäude tippen = platzieren. Lange drücken = anhalten, dann abbrechen. L1 / R1 wechseln den Reiter.</string>
+    <string name="deck_d_action">Befehl gesendet</string>
+    <string name="deck_act_hold">Angehalten: %1$s</string>
+    <string name="deck_act_cancel">Abgebrochen: %1$s</string>
+    <string name="deck_act_place">Platzieren: %1$s</string>
+    <string name="deck_standby">BEREITSCHAFT</string>
+    <string name="deck_standby_hint">Das Deck schaltet sich ein, sobald ein Gefecht läuft.</string>
+    <string name="sw_nuke">Atomrakete</string>
+    <string name="sw_iron_curtain">Eiserner Vorhang</string>
+    <string name="sw_weather">Wetterkontrolle</string>
+    <string name="sw_chrono">Chronosphäre</string>
+    <string name="sw_paradrop">Fallschirmjäger</string>
+    <string name="sw_dominator">Psycho-Dominator</string>
+    <string name="sw_spyplane">Spionageflugzeug</string>
+    <string name="sw_genetic">Genetischer Mutator</string>
+    <string name="sw_shield">Kraftschild</string>
+</resources>

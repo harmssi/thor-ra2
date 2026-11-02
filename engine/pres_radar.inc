@@ -90,53 +90,8 @@ public:
         // Rebuild the picture every 8 frames (shroud/ore/buildings change slowly).
         if (!tex_ || ++age_ >= 8) {
             age_ = 0;
-            std::vector<uint8_t> px(static_cast<std::size_t>(TW) * TH * 4, 0);
-            auto plot = [&](int x, int y, ra2assets::Rgba c, double dim) {
-                const double u = (x - y - u0_) * s, v = (x + y - v0_) * 0.5 * s;
-                const int x0 = static_cast<int>(u), y0 = static_cast<int>(v);
-                const int x1 = std::max(x0 + 1, static_cast<int>(u + s)), y1 = std::max(y0 + 1, static_cast<int>(v + 0.5 * s));
-                for (int yy = y0; yy < y1 && yy < TH; ++yy)
-                    for (int xx = x0; xx < x1 && xx < TW; ++xx) {
-                        if (xx < 0 || yy < 0) continue;
-                        uint8_t* p = &px[(static_cast<std::size_t>(yy) * TW + xx) * 4];
-                        p[0] = static_cast<uint8_t>(c.r * dim);
-                        p[1] = static_cast<uint8_t>(c.g * dim);
-                        p[2] = static_cast<uint8_t>(c.b * dim);
-                        p[3] = 255;
-                    }
-            };
-            for (int y = 0; y < gh_; ++y)
-                for (int x = 0; x < gw_; ++x) {
-                    ra2assets::Rgba c = base_[static_cast<std::size_t>(y) * gw_ + x];
-                    if (c.a == 0) continue;
-                    if (!w.explored_at(g_local_house, x, y)) { plot(x, y, ra2assets::Rgba{0, 0, 0, 255}, 1.0); continue; }
-                    if (w.ore().has_ore(x, y))
-                        c = w.ore().kind_at(x, y) == ra2engine::OreKind::Gems ? ra2assets::Rgba{60, 110, 200, 255}
-                                                                                : ra2assets::Rgba{200, 170, 40, 255};
-                    plot(x, y, c, (w.fog_of_war() && !w.visible_at(g_local_house, x, y)) ? 0.55 : 1.0);   // W2-GA-03
-                }
-            if (g_map_dressing)
-                for (const auto& o : g_map_dressing->objects())
-                    if (w.explored_at(g_local_house, o.x, o.y))
-                        for (int j = 0; j < o.fh; ++j)
-                            for (int i = 0; i < o.fw; ++i)
-                                plot(o.x + i, o.y + j, ra2assets::Rgba{70, 90, 60, 255}, 1.0);
-            for (const ra2engine::Building& b : w.buildings()) {
-                if (!b.alive || b.state == ra2engine::Building::State::Dead || !pres_building_seen(w, b)) continue;
-                const ra2assets::Rgba hc = w.house_palette(ba.unit_pal, b.house)[24];
-                for (int j = 0; j < b.fh; ++j)
-                    for (int i = 0; i < b.fw; ++i) plot(b.cx + i, b.cy + j, hc, 1.0);
-            }
-            for (const ra2engine::Unit& u : w.units()) {
-                if (!u.alive || u.die_time >= 0.0 || u.cargo_of >= 0) continue;
-                if (u.house != g_local_house && !w.object_visible_at(g_local_house, u.cell_x, u.cell_y)) continue;
-                // W7-05-13 [RE: radar cell draw FUN_00655690 @0x65583F: an object
-                // whose type is RadarInvisible (+0x22F) is drawn only for a house
-                // allied with the player (FUN_004F98B0)] -- the Night Hawk.
-                if (u.an.t.radar_invisible && u.house != g_local_house && !w.are_allied(g_local_house, u.house))
-                    continue;
-                plot(u.cell_x, u.cell_y, w.house_palette(ba.unit_pal, u.house)[24], 1.0);
-            }
+            std::vector<uint8_t> px;
+            build_picture(w, ba, s, TW, TH, px);
             if (tex_ && (tw_ != TW || th_ != TH)) { SDL_DestroyTexture(tex_); tex_ = nullptr; }
             if (!tex_) {
                 tex_ = SDL_CreateTexture(ren, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STREAMING, TW, TH);
@@ -190,7 +145,93 @@ public:
         SDL_RenderSetClipRect(ren, nullptr);
     }
 
+#if defined(__ANDROID__)
+    // Thor RA2: the same picture for the command deck on the second screen,
+    // fitted into max_w x max_h (independent of the sidebar draw).
+    bool thor_picture(const ra2engine::World& w, const BuildingAssets& ba, int max_w, int max_h,
+                      std::vector<uint8_t>& px, int& TW, int& TH, double& s) const {
+        if (!ok_) return false;
+        s = std::min(max_w / (uw_ * 1.0), max_h / (vh_ * 0.5));
+        TW = std::max(1, static_cast<int>(uw_ * s));
+        TH = std::max(1, static_cast<int>(vh_ * 0.5 * s));
+        build_picture(w, ba, s, TW, TH, px);
+        return true;
+    }
+    // Picture pixel (scale s) -> map cell, the inverse of build_picture's projection.
+    bool thor_cell_at(double px, double py, double s, int& cx, int& cy) const {
+        if (!ok_ || s <= 0) return false;
+        const double u = px / s + u0_, v = py / (0.5 * s) + v0_;
+        cx = std::clamp(static_cast<int>(std::floor((u + v) / 2.0)), 0, std::max(0, gw_ - 1));
+        cy = std::clamp(static_cast<int>(std::floor((v - u) / 2.0)), 0, std::max(0, gh_ - 1));
+        return true;
+    }
+    // Tactical viewport (camera, view size in window px) in picture pixels.
+    void thor_view_rect(const ra2engine::Camera& cam, int vw, int vh, double s, int out[4]) const {
+        auto to_pic = [&](int sx, int sy, int& rx, int& ry) {
+            const double u = (sx - cam.x) / 30.0, v = (sy - cam.y) / 15.0;
+            rx = static_cast<int>((u - u0_) * s);
+            ry = static_cast<int>((v - v0_) * 0.5 * s);
+        };
+        to_pic(0, 0, out[0], out[1]);
+        int x1 = 0, y1 = 0;
+        to_pic(vw, vh, x1, y1);
+        out[2] = std::max(2, x1 - out[0]);
+        out[3] = std::max(2, y1 - out[1]);
+    }
+#endif
+
 private:
+    void build_picture(const ra2engine::World& w, const BuildingAssets& ba, double s, int TW, int TH,
+                       std::vector<uint8_t>& px) const {
+        px.assign(static_cast<std::size_t>(TW) * TH * 4, 0);
+        auto plot = [&](int x, int y, ra2assets::Rgba c, double dim) {
+            const double u = (x - y - u0_) * s, v = (x + y - v0_) * 0.5 * s;
+            const int x0 = static_cast<int>(u), y0 = static_cast<int>(v);
+            const int x1 = std::max(x0 + 1, static_cast<int>(u + s)), y1 = std::max(y0 + 1, static_cast<int>(v + 0.5 * s));
+            for (int yy = y0; yy < y1 && yy < TH; ++yy)
+                for (int xx = x0; xx < x1 && xx < TW; ++xx) {
+                    if (xx < 0 || yy < 0) continue;
+                    uint8_t* p = &px[(static_cast<std::size_t>(yy) * TW + xx) * 4];
+                    p[0] = static_cast<uint8_t>(c.r * dim);
+                    p[1] = static_cast<uint8_t>(c.g * dim);
+                    p[2] = static_cast<uint8_t>(c.b * dim);
+                    p[3] = 255;
+                }
+        };
+        for (int y = 0; y < gh_; ++y)
+            for (int x = 0; x < gw_; ++x) {
+                ra2assets::Rgba c = base_[static_cast<std::size_t>(y) * gw_ + x];
+                if (c.a == 0) continue;
+                if (!w.explored_at(g_local_house, x, y)) { plot(x, y, ra2assets::Rgba{0, 0, 0, 255}, 1.0); continue; }
+                if (w.ore().has_ore(x, y))
+                    c = w.ore().kind_at(x, y) == ra2engine::OreKind::Gems ? ra2assets::Rgba{60, 110, 200, 255}
+                                                                            : ra2assets::Rgba{200, 170, 40, 255};
+                plot(x, y, c, (w.fog_of_war() && !w.visible_at(g_local_house, x, y)) ? 0.55 : 1.0);   // W2-GA-03
+            }
+        if (g_map_dressing)
+            for (const auto& o : g_map_dressing->objects())
+                if (w.explored_at(g_local_house, o.x, o.y))
+                    for (int j = 0; j < o.fh; ++j)
+                        for (int i = 0; i < o.fw; ++i)
+                            plot(o.x + i, o.y + j, ra2assets::Rgba{70, 90, 60, 255}, 1.0);
+        for (const ra2engine::Building& b : w.buildings()) {
+            if (!b.alive || b.state == ra2engine::Building::State::Dead || !pres_building_seen(w, b)) continue;
+            const ra2assets::Rgba hc = w.house_palette(ba.unit_pal, b.house)[24];
+            for (int j = 0; j < b.fh; ++j)
+                for (int i = 0; i < b.fw; ++i) plot(b.cx + i, b.cy + j, hc, 1.0);
+        }
+        for (const ra2engine::Unit& u : w.units()) {
+            if (!u.alive || u.die_time >= 0.0 || u.cargo_of >= 0) continue;
+            if (u.house != g_local_house && !w.object_visible_at(g_local_house, u.cell_x, u.cell_y)) continue;
+            // W7-05-13 [RE: radar cell draw FUN_00655690 @0x65583F: an object
+            // whose type is RadarInvisible (+0x22F) is drawn only for a house
+            // allied with the player (FUN_004F98B0)] -- the Night Hawk.
+            if (u.an.t.radar_invisible && u.house != g_local_house && !w.are_allied(g_local_house, u.house))
+                continue;
+            plot(u.cell_x, u.cell_y, w.house_palette(ba.unit_pal, u.house)[24], 1.0);
+        }
+    }
+
     ra2assets::Rgba tile_colour(const ra2assets::MapCell& c) {
         const ra2assets::TmpFile* tmp = a_->theater.tmp_for_tile(c.tile);
         if (!tmp || c.subtile >= tmp->count()) return ra2assets::Rgba{40, 40, 40, 255};

@@ -11,7 +11,7 @@
         android:shortcutLongLabel="@string/shortcut_import_long">
         <intent
             android:action="org.ra2.engine.action.IMPORT"
-            android:targetPackage="org.ra2.engine"
+            android:targetPackage="de.harmssi.thorra2"
             android:targetClass="org.ra2.engine.SetupActivity" />
     </shortcut>
 </shortcuts>

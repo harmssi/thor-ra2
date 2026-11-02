@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Thor RA2 mark: hexagon frame with three stacked command chevrons (self-made). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:strokeColor="#E5484D" android:strokeAlpha="0.55" android:strokeWidth="2.2"
+        android:pathData="M54,22 L81.7,38 L81.7,70 L54,86 L26.3,70 L26.3,38 Z" />
+    <path android:fillColor="#E5484D"
+        android:pathData="M36,38 L54,49 L72,38 L72,44 L54,55 L36,44 Z" />
+    <path android:fillColor="#E5484D" android:fillAlpha="0.75"
+        android:pathData="M36,50 L54,61 L72,50 L72,56 L54,67 L36,56 Z" />
+    <path android:fillColor="#E5484D" android:fillAlpha="0.45"
+        android:pathData="M36,62 L54,73 L72,62 L72,68 L54,79 L36,68 Z" />
+</vector>

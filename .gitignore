@@ -32,3 +32,6 @@
 *.keystore
 # W6-06-02 release packages (scripts/package-win.ps1)
 /dist/
+
+# Thor RA2: local APK output
+/dist/

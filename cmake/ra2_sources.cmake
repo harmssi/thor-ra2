@@ -118,6 +118,7 @@ set(RA2_ENGINE_SOURCES
     ${RA2_ROOT}/engine/voxel_raster.cpp
     ${RA2_ROOT}/engine/facing_cache.cpp
     ${RA2_ROOT}/engine/sidebar.cpp
+    ${RA2_ROOT}/engine/thor.cpp   # Thor RA2: second-screen command deck bridge
     ${RA2_ROOT}/engine/ore.cpp
     ${RA2_ROOT}/engine/harvest.cpp
     ${RA2_ROOT}/engine/factory.cpp

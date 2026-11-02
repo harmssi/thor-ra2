@@ -35,7 +35,7 @@ import java.util.Map;
 /**
  * W2-AR-03 / W2-AR-04: the launcher activity. It checks that the user's own
  * Red Alert 2 files are in the app's external files dir
- * (Android/data/org.ra2.engine/files/ra2/, the folder the engine reads) and
+ * (Android/data/<package>/files/ra2/, the folder the engine reads) and
  * starts the game when they are. Otherwise it explains what is missing and
  * offers an in-app import: the Storage Access Framework folder picker
  * (ACTION_OPEN_DOCUMENT_TREE -- works on Android 5 to 15, no storage
@@ -370,7 +370,7 @@ public class SetupActivity extends Activity {
     private void startGame() {
         // NEW_TASK only: RA2Activity is singleInstance, so a running game
         // (backgrounded with Home) is brought back as it was, not restarted.
-        Intent i = new Intent(this, RA2Activity.class);
+        Intent i = new Intent(this, de.harmssi.thorra2.ThorActivity.class);   // Thor RA2
         i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         startActivity(i);
         finish();

@@ -120,7 +120,7 @@ std::vector<std::string> data_dir_candidates() {
     std::vector<std::string> c;
 #if defined(__ANDROID__) && !defined(RA2_ANDROID_CLI)
     const char* ext = SDL_AndroidGetExternalStoragePath();
-    std::string dir = ext ? ext : "/sdcard/Android/data/org.ra2.engine/files";
+    std::string dir = ext ? ext : "/sdcard/Android/data/de.harmssi.thorra2/files";
     c.push_back(dir + "/ra2/");
 #else
     if (!g_data_dir_cli.empty()) c.push_back(with_trailing_sep(g_data_dir_cli));

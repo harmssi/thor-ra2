@@ -64,12 +64,19 @@ if (keystorePropsFile.exists()) {
     keystorePropsFile.withInputStream { keystoreProps.load(it) }
 }
 
+// Thor RA2: the AYN Thor is arm64; -Pthor.abis=arm64-v8a,x86_64 for the emulator.
+def thorVersionCode = (project.findProperty('thor.versionCode') ?: '1').toString().toInteger()
+def thorVersionName = (project.findProperty('thor.versionName') ?: '0.1.0-m1').toString() + ' (engine ' + ra2VersionName + ')'
+def thorCmakeVersion = (project.findProperty('thor.cmakeVersion') ?: '3.22.1').toString()
+def thorAbis = ((project.findProperty('thor.abis') ?: 'arm64-v8a').toString().split(',')) as String[]
+
 android {
     if (buildAsApplication) {
         namespace "org.ra2.engine"
     }
     // W2-AR-11: Play requires targetSdk 35 (Android 15) for new apps/updates.
     compileSdk 35
+    buildToolsVersion "35.0.0"   // Thor RA2: the one in the Docker image
     // Must match the NDK that ndkPath points at (r27c = 27.2.12479018),
     // otherwise AGP errors [CXX1100] on the version mismatch vs its default.
     ndkVersion "27.2.12479018"
@@ -78,12 +85,14 @@ android {
     }
     defaultConfig {
         if (buildAsApplication) {
-            applicationId "org.ra2.engine"
+            // Thor RA2: own package (installs next to the upstream org.ra2.engine).
+            applicationId "de.harmssi.thorra2"
         }
         minSdk 21
         targetSdk 35
-        versionCode ra2VersionCode
-        versionName ra2VersionName
+        // Thor RA2: own version line (upstream engine version in the native banner).
+        versionCode thorVersionCode
+        versionName thorVersionName
         // arm64-v8a is the real-device target; x86_64 is added so the same APK
         // runs in an accelerated Android emulator on an x86_64 host (the current
         // emulator cannot run arm64 images on x86 hosts) and on x86 Android
@@ -103,11 +112,11 @@ android {
                     arguments "-DCMAKE_JOB_POOLS=ra2=" + project.findProperty('ra2.jobs'),
                               "-DCMAKE_JOB_POOL_COMPILE=ra2", "-DCMAKE_JOB_POOL_LINK=ra2"
                 }
-                abiFilters 'arm64-v8a', 'x86_64'
+                abiFilters thorAbis
             }
         }
         ndk {
-            abiFilters 'arm64-v8a', 'x86_64'
+            abiFilters thorAbis
         }
     }
     signingConfigs {
@@ -167,7 +176,8 @@ android {
         externalNativeBuild {
             cmake {
                 path 'jni/CMakeLists.txt'
-                version '3.22.1'
+                // Thor RA2: the Docker build uses its own CMake (-Pthor.cmakeVersion).
+                version thorCmakeVersion
             }
         }
     }

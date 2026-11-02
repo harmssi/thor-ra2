@@ -1,152 +1,113 @@
-# RA2 Engine
+# Thor RA2
 
-An **unofficial, open-source engine for Command & Conquer: Red Alert 2 — Yuri's
-Revenge**, for **Windows and Android**. You play the original campaign,
-skirmish and multiplayer with the game files from **your own copy** of the
-game. No game data is included.
+**Red Alert 2 / Yuri's Revenge on the AYN Thor, native, with a command deck on the second screen.**
 
-The engine is written from scratch in C++17 with SDL2. Its behaviour is
-calibrated against the original game: unit stats come from your own
-`rulesmd.ini`, and the rules that are not in the data files (combat, movement,
-AI, timing and so on) were worked out by studying how the original game
-behaves. The notes in [`docs/re/`](docs/re/) record those findings in our own
-words.
+Thor RA2 is an Android (arm64) build of [RA2 Engine](https://github.com/omarelarab/ra2-engine) by Omar El Arab, an open-source engine for *Command & Conquer: Red Alert 2 – Yuri's Revenge*, made for the AYN Thor dual-screen handheld:
 
-> **Status: playable beta (0.9).** The Allied and Soviet campaigns, skirmish
-> against the AI and LAN / Internet multiplayer work on desktop and Android.
-> It is not yet a 1:1 copy of the original: see [Known limitations](#known-limitations).
+- **Top screen (1920×1080):** only the map. The sidebar is gone and the tactical view uses the full width. Menus, briefings and movies are unchanged.
+- **Bottom screen (1240×1080):** a touch command deck with credits, a power meter (red on low power), the radar (tap or drag to move the camera, a "no signal" look without a radar station or power), REPAIR / SELL / MENU, the superweapons with their timers, and four build tabs (buildings, defenses, infantry, vehicles) with the cameos, build progress, READY and ON HOLD.
+- **Controller and touch** on the top screen.
 
-## What you need
+Without a second screen everything stays as in RA2 Engine (sidebar on the right).
 
-- **Red Alert 2 with Yuri's Revenge**, installed from a legally owned copy
-  (CD, The First Decade, Origin / EA App or Steam). The engine reads the
-  Yuri's Revenge data, so a Red Alert 2-only install is not enough.
-- **Windows 10 or later**, or **Android 5.0 or later**.
+> Thor RA2 ships **no game data**. It runs on the original files from your own copy of the game (Red Alert 2 with Yuri's Revenge, e.g. *The First Decade*, Origin / EA App or Steam). Cameos and the radar are rendered at runtime from those files.
 
-## Install
+Status: **milestone 1** (deck works in skirmish and campaign; see [Known limitations](#known-limitations)).
 
-### 1. Get the game files
+---
 
-Open your Red Alert 2 install folder (the folder that holds `ra2.mix`) and
-copy **every `.mix` and `.csf` file** in it, about 1 GB in total. That is the
-easy way to make sure nothing is missing. You can leave out the `.exe`, `.dll`
-and other files.
+## Features
 
-What the files are for:
+| | |
+|---|---|
+| **Dual screen** | The deck is an Android `Presentation` on display 4 (`FLAG_NOT_FOCUSABLE`, so the controller stays with the game). Without a second screen, or with the intent extra `single=true`, the original sidebar is shown on the top screen. |
+| **Engine-faithful** | Every deck action goes through the engine's normal sidebar path: a cameo tap runs the sidebar's cameo click (start, queue, hold, cancel, place), a tab tap is the tab button, REPAIR / SELL are the sidebar buttons, a radar tap centres the view like a radar click, MENU is the Esc key. The deck never changes game state directly. |
+| **Build deck** | Tap = build, or place when READY (then tap the spot on the top screen). Buildings: tap again while building = hold. Units: every tap queues one more (×N badge). Long-press = hold, then cancel. The progress sweep is drawn over the cameo. The accent color follows the side: amber for the Allies, red for the Soviets. |
+| **Radar** | Rendered from the engine's own radar picture (terrain, ore, shroud, buildings, units) with the camera frame. Tap or drag to scroll the map. |
+| **Superweapons** | Each superweapon with its cameo, a countdown and a charge bar; tap when READY to pick a target on the top screen. |
+| **Controller** | Left stick = cursor, A = left click, B = right click, right stick / D-pad = scroll, Start = options menu, Back = centre on base, X = deploy, Y = stop, L3 (hold) = force fire. **L1 / R1** switch the deck's build tab. |
+| **Languages** | Deck in English (default), Deutsch, Español, Français, following the system / per-app language. |
 
-| File | Needed? | Used for |
-|---|---|---|
-| `ra2.mix`, `ra2md.mix`, `language.mix`, `multimd.mix` | **required** | rules, art, units, sounds, voices, menus, skirmish maps |
-| `langmd.mix`, `ra2.csf` | recommended | Yuri's Revenge names and text |
-| `theme.mix`, `thememd.mix` | recommended | music (Red Alert 2 and Yuri's Revenge soundtracks) |
-| `Maps01.mix`, `MAPS02.MIX`, `mapsmd03.mix` | recommended | Allied and Soviet campaign maps, default map |
-| `expand01.mix`, `ecache01.mix`, `expandmd01.mix` … | if present | official patch data |
-| `MOVIES01.MIX`, `MOVIES02.MIX`, `MOVMD03.MIX` | if present | campaign cutscenes; some digital versions ship them as tiny placeholder files |
+## Game data
 
-Only the four required files stop the game from starting. Without the
-others you lose that part of the game: music, campaigns, cutscenes or patch
-rules. If a required file is missing, the game opens a **GAME FILES NEEDED**
-page that lists what is missing and where it looked.
+Copy every `.mix` and `.csf` file from your Red Alert 2 install folder (the one with `ra2.mix`, about 1 GB) to
 
-### 2a. Windows
-
-1. Download the Windows zip from the [Releases](../../releases) page and unzip
-   it anywhere, or [build from source](#build-from-source).
-2. Either put the game files in the same folder as `ra2game.exe`, or just start
-   `ra2game.exe`. If it cannot find the files, the **GAME FILES NEEDED** page
-   has a **BROWSE** button to pick your Red Alert 2 folder, and it remembers
-   the choice.
-
-The game also finds a standard retail install from the Windows registry, so on
-a PC that already has Red Alert 2 installed it usually just starts.
-
-### 2b. Android
-
-1. Install the APK from the [Releases](../../releases) page.
-2. Copy the game files to the phone, for example into `Download/RA2`, using a
-   USB cable (file transfer) or any file manager.
-3. Open **RA2 Engine** and tap **Import game files**. Pick the `RA2` folder
-   and allow access. The app copies the files into its own storage (about a
-   minute) and starts the game.
-
-To add or replace files later (music, campaign maps, movies), put them in the
-same folder and import again: long-press the app icon, or use **Options →
-Game Files** in the game.
-
-The full player guide covers controls (mouse and touch), movies, network play,
-saves and troubleshooting: **[docs/INSTALL.md](docs/INSTALL.md)**.
-
-## Multiplayer
-
-- **LAN:** games on the same Wi-Fi or network show up automatically, or join by
-  IP address.
-- **Internet:** through a small lobby / relay server that you host yourself
-  (one binary, no account system). See **[docs/SERVER.md](docs/SERVER.md)**.
-- Up to 8 players, AI slots, the original game types, alliances, chat and
-  beacons. Every player must run the same engine version and the same game
-  files; the lobby checks both.
-
-## Build from source
-
-Requirements: CMake 3.20+, Ninja, a C++17 compiler (MinGW-w64 GCC on Windows),
-and Python 3 for the tools. SDL2 2.30.9 is fetched automatically.
-
-```sh
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
-cmake --build build
-build/ra2game        # the game (ra2engine is the console build)
-build/ra2assets_tests  # the unit tests
+```
+/sdcard/Android/data/de.harmssi.thorra2/files/ra2/
 ```
 
-Android APK (JDK 17+, Android SDK and NDK r27c). Configure the desktop build
-first, because the Android build reuses the SDL2 source it downloads (or set
-`RA2_SDL2_SRC_DIR` to an SDL 2.30.9 source folder):
+Required: `ra2.mix`, `ra2md.mix`, `language.mix`, `multimd.mix`. Recommended: `langmd.mix`, `theme.mix`, `thememd.mix`, `maps01.mix`, `maps02.mix`, `mapsmd03.mix`, patch and movie archives (see [README.upstream.md](README.upstream.md)).
+
+Ways to get them there:
+
+- **In the app:** if files are missing, the start screen offers **Import game files** (Storage Access Framework picker, no extra permissions).
+- **Over adb:** `thor/copy-data.sh` copies the files from another folder on the device, for example from the upstream RA2 Engine app (`org.ra2.engine`) or `SRC=/sdcard/Download/RA2`. It only reads the source folder.
+
+Uninstalling the app deletes its data folder. Updating it (`adb install -r`) does not.
+
+## Building
+
+Gradle builds everything: the engine (`libmain.so`, CMake + NDK r27c, SDL2 2.30.9 fetched by the upstream CMake) and the Java shell.
 
 ```sh
-cd android
-./gradlew assembleDebug
+thor/build.sh            # → dist/ThorRA2.apk
+thor/build.sh --install  # also adb install -r
 ```
 
-Developer documentation, including the test and determinism gates, the
-`--play` script harness and the architecture notes, is in
-**[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)**.
+`build.sh` syncs the tree to a Linux build host (`THOR_BUILD_HOST=user@host`, work directory `THOR_RA2_REMOTE`, default `/mnt/cache/thor-ra2`) and runs `thor/docker-build.sh` in the Docker image `thor-build` (build it once with `docker build -t thor-build thor/`, see `thor/Dockerfile`: Ubuntu 22.04, JDK 17, Android SDK 35, NDK 27.2.12479018, Gradle 8.9, CMake 3.31, Ninja).
+
+The first build creates a signing key in `<work>/keystore/thorra2.jks`; keep it, so later builds install as updates.
+
+### Layout
+
+| Path | What |
+|---|---|
+| `engine/thor.{hpp,cpp}` | Engine side of the deck: command queue, snapshot, radar picture, cameo / name requests, JNI (`de.harmssi.thorra2.ThorBridge`) |
+| `engine/thor_scene.inc` | `GameScene` members: runs deck commands through the sidebar code, publishes the snapshot |
+| `engine/pres_radar.inc` | Radar picture shared by the sidebar and the deck |
+| `engine/platform.cpp` | Game controller (virtual mouse, scroll, buttons) |
+| `engine/main.cpp` | Sidebar hidden in dual-screen mode (`sidebar_up_`), hooks |
+| `android/app/src/main/java/de/harmssi/thorra2/` | `ThorActivity` (game activity), `ThorScreens` (presentation on display 4), `ThorDeck` (the deck), `Ui` (design system) |
+| `thor/` | Build scripts, Dockerfile, `copy-data.sh` |
+
+Engine changes are small and marked `Thor RA2`; with `thor::dual()` false the engine behaves like upstream.
 
 ## Known limitations
 
-- Yuri's faction is not playable (Allied and Soviet only); the Yuri's Revenge
-  campaign is not included in the campaign menu yet.
-- Some details still differ from the original: for example units tilting on
-  slopes, the Siege Chopper deploy, the Spy Plane and the random map
-  generator.
-- Phone-versus-PC multiplayer is switched off by default until it has been
-  tested more on real phones.
-- Saved games do not carry over between engine versions yet.
+- The game is the RA2 Engine beta (0.9): Yuri's side and campaign are not playable yet, see [README.upstream.md](README.upstream.md#known-limitations).
+- The shell menus have no controller navigation; the cursor works there (A = click).
+- The launcher is upstream's file check / import screen (English only).
 
-## Legal
+## Credits & license
 
-This is a non-commercial fan project. It contains an engine only and **does
-not include or distribute any Command & Conquer: Red Alert 2 / Yuri's
-Revenge game data** — no art, sounds, music, movies, maps or rules files. The
-engine runs only on game files that the player supplies from their own legally
-obtained copy.
+- **RA2 Engine** by Omar El Arab, [github.com/omarelarab/ra2-engine](https://github.com/omarelarab/ra2-engine), Zero-Clause BSD (0BSD), see [LICENSE](LICENSE) and [README.upstream.md](README.upstream.md)
+- Third-party components keep their own licences, see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) (SDL2: zlib)
+- Fonts: [Inter](https://rsms.me/inter/) and [JetBrains Mono](https://www.jetbrains.com/lp/mono/), SIL Open Font License 1.1 (`android/app/src/main/assets/licenses/`)
+- The deck, its icons, the emblem and the app icon are original work. No EA / Westwood logos, fonts or artwork are included. Cameos and the radar are rendered at runtime from the player's own game files.
+- Thor RA2's own changes are released under the same 0BSD licence.
 
-"Command & Conquer", "Red Alert" and "Yuri's Revenge" are trademarks of
-Electronic Arts Inc. This project is not affiliated with, endorsed by or
-sponsored by Electronic Arts. The art, logos, sounds and text shown while
-playing come from the player's own files. The notes in `docs/re/` describe how
-the original game behaves, in our own words, so that the engine can match it;
-they contain no Electronic Arts source code, art, audio or map files.
+**Trademark notice:** Command & Conquer, Red Alert and Yuri's Revenge are trademarks or registered trademarks of Electronic Arts Inc. This project is not affiliated with, endorsed by or sponsored by Electronic Arts. You need to own the game to use it.
 
-## License
+---
 
-RA2 Engine is free for everyone, under the **Zero-Clause BSD licence**
-(0BSD). The full text is in [LICENSE](LICENSE).
+## Deutsch
 
-Anyone may use, copy, change and share it, for any purpose, with or without
-payment, and with no conditions at all. The software comes as is, without any
-warranty.
+Thor RA2 bringt Red Alert 2 / Yuri's Revenge nativ auf den AYN Thor, auf Basis der quelloffenen RA2 Engine von Omar El Arab. Oben läuft nur die Karte über die volle Breite, ohne Seitenleiste. Unten liegt das Kommando-Deck mit Credits, Strombalken (rot bei Strommangel), Radar (Tippen oder Ziehen bewegt die Kamera, ohne Radarstation oder Strom „kein Signal“), REPARIEREN / VERKAUFEN / MENÜ, den Superwaffen mit Countdown und vier Bau-Reitern (Gebäude, Verteidigung, Infanterie, Fahrzeuge) mit den Cameos aus den eigenen Spieldateien, Baufortschritt, BEREIT und ANGEHALTEN.
 
-Author: Omar El Arab
+Jede Deck-Aktion läuft über den normalen Sidebar-Pfad der Engine, das Deck schreibt nie direkt in den Spielzustand. Tippen = bauen bzw. bei BEREIT platzieren (dann oben auf den Bauplatz tippen). Lange drücken = anhalten, dann abbrechen. L1 / R1 wechseln den Reiter. Ohne zweiten Bildschirm bleibt alles wie im Original.
 
-Third-party components keep their own licences; they are listed in
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+**Controller:** linker Stick = Zeiger, A = Linksklick, B = Rechtsklick, rechter Stick / Steuerkreuz = Karte scrollen, Start = Optionsmenü, Back = zur Basis, X = Entfalten, Y = Stopp, L3 halten = Zwangsfeuer.
+
+**Daten:** Alle `.mix`- und `.csf`-Dateien aus der eigenen Red-Alert-2-Installation (mit Yuri's Revenge) nach `/sdcard/Android/data/de.harmssi.thorra2/files/ra2/` kopieren, per Import im Startbildschirm oder mit `thor/copy-data.sh` über adb. Es werden keine Spieldaten mitgeliefert oder heruntergeladen.
+
+**Bauen:** `thor/build.sh` (Docker-Image `thor-build` mit NDK 27.2, SDK 35, Gradle 8.9) erzeugt `dist/ThorRA2.apk`.
+
+Command & Conquer, Red Alert und Yuri's Revenge sind Marken von Electronic Arts Inc. Dieses Projekt steht in keiner Verbindung zu Electronic Arts.
+
+## Español
+
+Thor RA2 lleva Red Alert 2 / Yuri's Revenge de forma nativa a la AYN Thor, basado en RA2 Engine. La pantalla superior muestra solo el mapa; la inferior es un panel de mando táctil con créditos, energía, radar, superarmas y construcción. Necesitas tu propia copia del juego: copia los archivos `.mix` y `.csf` a la carpeta indicada arriba.
+
+## Français
+
+Thor RA2 apporte Red Alert 2 / Yuri's Revenge en natif sur l'AYN Thor, basé sur RA2 Engine. L'écran du haut affiche uniquement la carte ; celui du bas est un panneau de commandement tactile avec crédits, énergie, radar, superarmes et construction. Il vous faut votre propre exemplaire du jeu : copiez les fichiers `.mix` et `.csf` dans le dossier indiqué ci-dessus.

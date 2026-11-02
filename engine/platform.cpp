@@ -3,7 +3,9 @@
 #include "touch_gestures.hpp"
 
 #include <SDL.h>
+#include <cmath>
 #include <cstdio>
+#include <deque>
 #include <stdexcept>
 #include <string>
 
@@ -15,6 +17,87 @@ struct Platform::Impl {
     int w = 0;
     int h = 0;
     TouchGestures touch;   // G-70 gesture layer (fed by SDL_FINGER*)
+    // Thor RA2: game controller (the AYN Thor's built-in pad). The left stick
+    // drives a virtual mouse (A = left click, B = right click, it is a real
+    // mouse to the engine: software cursor, edge scroll), the right stick and
+    // the D-pad scroll the map (Pan), Start = Esc (options), Back = H (centre
+    // on base), X = D (deploy), Y = S (stop), L3 = Ctrl (force fire) while held.
+    SDL_GameController* pad = nullptr;
+    double pad_x = -1, pad_y = -1;   // virtual cursor (logical px)
+    uint32_t pad_tick = 0;
+    uint32_t pad_used_at = 0;
+    bool pad_l3 = false;
+    std::deque<InputEvent> pad_q;
+    void pad_open(int index) {
+        if (pad || !SDL_IsGameController(index)) return;
+        pad = SDL_GameControllerOpen(index);
+        if (pad) SDL_Log("[pad] %s", SDL_GameControllerName(pad));
+    }
+    void pad_pointer(InputEvent::Kind kind, InputEvent::Button button, uint32_t t) {
+        if (pad_x < 0) { pad_x = w / 2.0; pad_y = h / 2.0; }
+        InputEvent ev;
+        ev.kind = kind;
+        ev.button = button;
+        ev.x = static_cast<int>(pad_x);
+        ev.y = static_cast<int>(pad_y);
+        ev.ctrl = pad_l3;
+        ev.t_ms = t;
+        pad_q.push_back(ev);
+        pad_used_at = t ? t : 1;
+    }
+    void pad_key(int sdl_key, uint32_t t) {
+        InputEvent ev;
+        key_event_from_sdl(sdl_key, 0, ev);
+        ev.t_ms = t;
+        if (ev.kind != InputEvent::None) pad_q.push_back(ev);
+    }
+    static double stick(SDL_GameController* c, SDL_GameControllerAxis a) {
+        const double v = SDL_GameControllerGetAxis(c, a) / 32767.0;
+        const double dead = 0.18;
+        if (std::fabs(v) < dead) return 0.0;
+        const double m = (std::fabs(v) - dead) / (1.0 - dead);
+        return (v < 0 ? -1.0 : 1.0) * m * m;   // fine control near the centre
+    }
+    // Called when no SDL event is pending: stick motion becomes pointer / pan events.
+    void pad_frame(uint32_t now) {
+        const uint32_t last = pad_tick;
+        pad_tick = now;
+        if (!pad || !last) return;
+        const double dt = std::min(0.05, (now - last) / 1000.0);
+        if (dt <= 0) return;
+        const double lx = stick(pad, SDL_CONTROLLER_AXIS_LEFTX), ly = stick(pad, SDL_CONTROLLER_AXIS_LEFTY);
+        if (lx != 0.0 || ly != 0.0) {
+            if (pad_x < 0) { pad_x = w / 2.0; pad_y = h / 2.0; }
+            const double speed = h * 1.35;   // logical px per second at full tilt
+            pad_x = std::clamp(pad_x + lx * speed * dt, 0.0, static_cast<double>(w - 1));
+            pad_y = std::clamp(pad_y + ly * speed * dt, 0.0, static_cast<double>(h - 1));
+            pad_pointer(InputEvent::PointerMove, InputEvent::Left, now);
+        }
+        double rx = stick(pad, SDL_CONTROLLER_AXIS_RIGHTX), ry = stick(pad, SDL_CONTROLLER_AXIS_RIGHTY);
+        if (SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_DPAD_LEFT)) rx = -1;
+        if (SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_DPAD_RIGHT)) rx = 1;
+        if (SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_DPAD_UP)) ry = -1;
+        if (SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_DPAD_DOWN)) ry = 1;
+        if (rx != 0.0 || ry != 0.0) {
+            const double speed = h * 1.6;
+            pan_acc_x -= rx * speed * dt;
+            pan_acc_y -= ry * speed * dt;
+            const int dx = static_cast<int>(pan_acc_x), dy = static_cast<int>(pan_acc_y);
+            if (dx != 0 || dy != 0) {
+                pan_acc_x -= dx;
+                pan_acc_y -= dy;
+                InputEvent ev;
+                ev.kind = InputEvent::Pan;
+                ev.dx = dx;
+                ev.dy = dy;
+                ev.x = ev.x0 = w / 2;   // a pan "on the map" (never on the sidebar)
+                ev.y = ev.y0 = h / 2;
+                ev.t_ms = now;
+                pad_q.push_back(ev);
+            }
+        }
+    }
+    double pan_acc_x = 0, pan_acc_y = 0;
     // W9-04-04: a phone returning from the background can deliver a mouse
     // event (no real mouse: the window corner) -- it switched the game to
     // mouse mode and edge-scrolled the map into the black. Mouse events are
@@ -54,6 +137,9 @@ Platform Platform::create(const char* title, int w, int h, bool hidden) {
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
         throw std::runtime_error(SDL_GetError());
     }
+    // Thor RA2: game controllers (optional; a failure only means no pad).
+    if (!hidden && SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER) != 0)
+        SDL_Log("[pad] no game controller support: %s", SDL_GetError());
 
     Uint32 flags = hidden ? SDL_WINDOW_HIDDEN : SDL_WINDOW_SHOWN;
 #ifdef __ANDROID__
@@ -248,10 +334,21 @@ bool Platform::touch_hold(int& x, int& y, float& progress) const {
 bool Platform::poll(InputEvent& ev) {
     ev = InputEvent{};
     if (p_->touch.pop(ev)) return true;   // G-70: queued gesture events first
+    if (!p_->pad_q.empty()) {   // Thor RA2: controller events
+        ev = p_->pad_q.front();
+        p_->pad_q.pop_front();
+        return true;
+    }
     SDL_Event e;
     if (!SDL_PollEvent(&e)) {
         p_->touch.tick(SDL_GetTicks());   // long-press fires with no new event
         if (p_->touch.pop(ev)) return true;
+        p_->pad_frame(SDL_GetTicks());
+        if (!p_->pad_q.empty()) {
+            ev = p_->pad_q.front();
+            p_->pad_q.pop_front();
+            return true;
+        }
         ev.kind = InputEvent::None;
         return false;
     }
@@ -373,10 +470,58 @@ bool Platform::poll(InputEvent& ev) {
                                   static_cast<int>(e.tfinger.y * p_->h), e.tfinger.timestamp);
             ev.kind = InputEvent::None;
             break;
+        // Thor RA2: game controller.
+        case SDL_CONTROLLERDEVICEADDED:
+            p_->pad_open(e.cdevice.which);
+            ev.kind = InputEvent::None;
+            break;
+        case SDL_CONTROLLERDEVICEREMOVED:
+            if (p_->pad && SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(p_->pad)) == e.cdevice.which) {
+                SDL_GameControllerClose(p_->pad);
+                p_->pad = nullptr;
+            }
+            ev.kind = InputEvent::None;
+            break;
+        case SDL_CONTROLLERBUTTONDOWN:
+        case SDL_CONTROLLERBUTTONUP: {
+            const bool down = e.type == SDL_CONTROLLERBUTTONDOWN;
+            const uint32_t t = e.cbutton.timestamp;
+            switch (e.cbutton.button) {
+                case SDL_CONTROLLER_BUTTON_A:
+                    p_->pad_pointer(down ? InputEvent::PointerDown : InputEvent::PointerUp, InputEvent::Left, t);
+                    break;
+                case SDL_CONTROLLER_BUTTON_B:
+                    p_->pad_pointer(down ? InputEvent::PointerDown : InputEvent::PointerUp, InputEvent::Right, t);
+                    break;
+                case SDL_CONTROLLER_BUTTON_LEFTSTICK:
+                    p_->pad_l3 = down;
+                    break;
+                default:
+                    if (!down) break;
+                    switch (e.cbutton.button) {
+                        case SDL_CONTROLLER_BUTTON_START: p_->pad_key(SDLK_ESCAPE, t); break;
+                        case SDL_CONTROLLER_BUTTON_BACK: p_->pad_key(SDLK_h, t); break;
+                        case SDL_CONTROLLER_BUTTON_X: p_->pad_key(SDLK_d, t); break;
+                        case SDL_CONTROLLER_BUTTON_Y: p_->pad_key(SDLK_s, t); break;
+                        default: break;
+                    }
+                    break;
+            }
+            ev.kind = InputEvent::None;
+            break;
+        }
         default:
             ev.kind = InputEvent::None;
             break;
     }
+    return true;
+}
+
+bool Platform::pad_cursor(int& x, int& y) const {
+    if (!p_ || !p_->pad || p_->pad_x < 0 || !p_->pad_used_at) return false;
+    if (SDL_GetTicks() - p_->pad_used_at > 8000) return false;
+    x = static_cast<int>(p_->pad_x);
+    y = static_cast<int>(p_->pad_y);
     return true;
 }
 
@@ -386,7 +531,27 @@ void Platform::begin_frame() {
     SDL_RenderClear(p_->renderer);
 }
 
+// Thor RA2: scenes without their own cursor (the shell menus) get a plain
+// arrow at the controller's virtual pointer; GameScene draws MOUSE.SHP itself.
+static bool g_scene_cursor = false;
+void platform_scene_draws_cursor() { g_scene_cursor = true; }
+
 void Platform::present() {
+    int cx = 0, cy = 0;
+    if (!g_scene_cursor && pad_cursor(cx, cy)) {
+        SDL_Renderer* r = p_->renderer;
+        SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_NONE);
+        for (int pass = 0; pass < 2; ++pass) {
+            const int o = pass == 0 ? 1 : 0;
+            if (pass == 0) SDL_SetRenderDrawColor(r, 0, 0, 0, 255);
+            else SDL_SetRenderDrawColor(r, 255, 255, 255, 255);
+            for (int i = 0; i < 16; ++i) {   // arrow: a widening wedge with a short tail
+                const int wdt = i < 11 ? i * 2 / 3 : std::max(0, (15 - i));
+                SDL_RenderDrawLine(r, cx + o, cy + i + o, cx + wdt + o, cy + i + o);
+            }
+        }
+    }
+    g_scene_cursor = false;
     SDL_RenderPresent(p_->renderer);
 }
 

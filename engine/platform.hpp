@@ -51,6 +51,9 @@ struct EventSource {
 // through the exact production mapping.
 void key_event_from_sdl(int sdl_keycode, int sdl_mod, InputEvent& ev);
 
+// Thor RA2: a scene that draws its own cursor this frame calls this before present().
+void platform_scene_draws_cursor();
+
 class Platform : public EventSource {
 public:
     // hidden = true creates an invisible window with the software renderer (the
@@ -75,6 +78,8 @@ public:
     void output_size(int& w, int& h) const;
     // W4-AM-07: a finger resting toward a hold (the scene draws a ring).
     bool touch_hold(int& x, int& y, float& progress) const;
+    // Thor RA2: the controller's virtual pointer while the pad is in use.
+    bool pad_cursor(int& x, int& y) const;
 private:
     Platform() = default;
     struct Impl; Impl* p_ = nullptr;

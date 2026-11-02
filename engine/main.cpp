@@ -97,6 +97,7 @@ static char* ra2_cli_pref_path() {
 #include <filesystem>        // P7: temp save dir for --demo-saveload
 #include <ctime>             // P7: save timestamps
 #include "sidebar.hpp"
+#include "thor.hpp"   // Thor RA2: command deck on a second screen
 #include "texture_cache.hpp"
 #include "skirmish.hpp"
 #include "skirmish_lobby.hpp"
@@ -6515,7 +6516,8 @@ public:
                                           : build_campaign_world(a_, ua_)),
           buildable_(building_buildable_tab(ba_, /*defenses=*/false)),   // active_tab_ starts at 0
           lay_(ra2engine::SidebarLayout::compute(kWinW, kWinH, buildable_)),
-          sidebar_up_(ba_.ok && ba_.sidebar_ok),
+          // Thor RA2: with the command deck on a second screen the map takes the full width.
+          sidebar_up_(ba_.ok && ba_.sidebar_ok && !thor::dual()),
           playfield_w_(kWinW - (sidebar_up_ ? lay_.bar.w : 0)),
           cam_(centered_camera(a_.map, playfield_w_, kWinH)),
           input_(world_, cam_, playfield_w_, kWinH) {
@@ -6730,6 +6732,7 @@ public:
         }
     }
     ~GameScene() override {
+        thor::clear();   // Thor RA2: the deck goes back to standby
         net_teardown();   // NET-PLAY: a live session keeps flushing its EXIT
         if (cmd_rec_) {   // NET L1 --record: the end state the replay must reach
             const std::uint64_t h = sim_state_hash();
@@ -6843,6 +6846,7 @@ public:
     // One step of the former loop body: camera pan, edge-detects, world.step,
     // production, exit handoff, free units, audio events, placement/SW confirm.
     void update(double dt) override {
+        thor_tick();   // Thor RA2: deck commands + snapshot (thor_scene.inc)
         menu_.set_mp(net_ != nullptr, mp_can_observe());   // W9-05-06: the MP options / exit pages
         tooltip_tick(dt);   // W2-UI-07 hover timer (game time)
         touch_bar_tick(dt);   // W4-AM-05: the open touch column closes itself
@@ -7306,6 +7310,7 @@ public:
                 (active_tab_ >= 2) ? !world_.factory_category_lost(rp_ft_of(vis_cat), local_house_)
                                    : true;
             const ra2engine::Input::BaseMode bm = input_.base_mode();
+            if (sidebar_up_)   // Thor RA2: hidden while the deck shows it on the second screen
             draw_sidebar(ren, tc, ba_, lay_, lq().state(vis_cat), world_,
                          static_cast<int>(std::llround(credits_shown_)), now_ / 1000.0,
                          active_tab_, &ur_, unit_fac_alive,
@@ -7315,7 +7320,7 @@ public:
         draw_production_chrome(ren, world_, input_, a_, cam_, playfield_w_, &tc);
         pip_tc_ = &tc;
         draw_selected_building(ren);   // G-10 / W2-UI-11
-        draw_queue_badges(ren, tc);    // G-07 / W2-UI-03/04
+        if (sidebar_up_) draw_queue_badges(ren, tc);    // G-07 / W2-UI-03/04
         draw_tooltip(ren, tc);         // W2-UI-07
         // Repair / Sell software cursor over the playfield [RE: §D8]; the OS
         // cursor is hidden only while it draws.
@@ -7332,6 +7337,7 @@ public:
             drew = pres_.draw_cursor(ren, tc, mouse_, world_, input_, mx_, my_,
                                      sidebar_up_ && lay_.contains(mx_, my_), playfield_w_, kWinW,
                                      kWinH, world_.repair_frame(), static_cast<int>(cursor_action()));
+        if (mouse_present_) ra2engine::platform_scene_draws_cursor();   // Thor RA2: no pad arrow on top
         if (drew != os_cursor_hidden_) {
             SDL_ShowCursor(drew ? SDL_DISABLE : SDL_ENABLE);
             os_cursor_hidden_ = drew;
@@ -7374,6 +7380,7 @@ public:
 #include "game_scene_play.inc"
     // Agent B controls/UI members (cursor state, building selection, hotkeys).
 #include "game_scene_controls.inc"
+#include "thor_scene.inc"   // Thor RA2: second-screen command deck
 #include "game_scene_commands.inc"   // NET L1: command queue / host / record
 #include "game_scene_net.inc"        // NET-PLAY: lockstep mode (tick gate, sync hash, chat, leave)
 #include "game_scene_mp.inc"         // W9-05: diplomacy, observer, Leave/Observe, chat channels, beacons

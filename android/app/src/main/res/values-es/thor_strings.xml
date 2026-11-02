@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Thor RA2: command deck (bottom screen). -->
+<resources>
+    <string name="deck_credits">CRÉDITOS</string>
+    <string name="deck_power">ENERGÍA</string>
+    <string name="deck_low_power">ENERGÍA BAJA</string>
+    <string name="deck_output_drain">PRODUCCIÓN / CONSUMO</string>
+    <string name="deck_radar">RADAR</string>
+    <string name="deck_online">ACTIVO</string>
+    <string name="deck_offline">APAGADO</string>
+    <string name="deck_no_signal">SIN SEÑAL</string>
+    <string name="deck_radar_hint">Construye un radar para ver el mapa</string>
+    <string name="deck_radar_power_hint">Radar apagado: falta energía</string>
+    <string name="deck_repair">REPARAR</string>
+    <string name="deck_sell">VENDER</string>
+    <string name="deck_menu">MENÚ</string>
+    <string name="deck_tab_buildings">EDIFICIOS</string>
+    <string name="deck_tab_defense">DEFENSA</string>
+    <string name="deck_tab_infantry">INFANTERÍA</string>
+    <string name="deck_tab_vehicles">VEHÍCULOS</string>
+    <string name="deck_nothing">Aún no hay nada que construir</string>
+    <string name="deck_ready">LISTO</string>
+    <string name="deck_on_hold">EN ESPERA</string>
+    <string name="deck_super">SUPERARMAS</string>
+    <string name="deck_mode_place">COLOCAR</string>
+    <string name="deck_mode_target">OBJETIVO</string>
+    <string name="deck_mode_repair">REPARAR</string>
+    <string name="deck_mode_sell">VENDER</string>
+    <string name="deck_mode_paused">PAUSA</string>
+    <string name="deck_side_allies">ALIADOS</string>
+    <string name="deck_side_soviet">SOVIÉTICOS</string>
+    <string name="deck_h_place">Coloca el edificio</string>
+    <string name="deck_d_place">Toca el mapa en la pantalla superior. Mantén pulsado allí para cancelar.</string>
+    <string name="deck_h_target">Elige un objetivo</string>
+    <string name="deck_d_target">Toca el objetivo en la pantalla superior.</string>
+    <string name="deck_h_repair">Modo reparación</string>
+    <string name="deck_d_repair">Toca un edificio arriba. Vuelve a tocar REPARAR para terminar.</string>
+    <string name="deck_h_sell">Modo venta</string>
+    <string name="deck_d_sell">Toca un edificio arriba. Vuelve a tocar VENDER para terminar.</string>
+    <string name="deck_h_ready">Listo para órdenes</string>
+    <string name="deck_d_ready">Toca un icono para construir y un edificio LISTO para colocarlo. Mantener = pausar y luego cancelar. L1 / R1 cambian de pestaña.</string>
+    <string name="deck_d_action">Orden enviada</string>
+    <string name="deck_act_hold">En espera: %1$s</string>
+    <string name="deck_act_cancel">Cancelado: %1$s</string>
+    <string name="deck_act_place">Colocar: %1$s</string>
+    <string name="deck_standby">EN ESPERA</string>
+    <string name="deck_standby_hint">El panel se activa al empezar una partida.</string>
+    <string name="sw_nuke">Misil nuclear</string>
+    <string name="sw_iron_curtain">Telón de Acero</string>
+    <string name="sw_weather">Control del clima</string>
+    <string name="sw_chrono">Cronosfera</string>
+    <string name="sw_paradrop">Paracaidistas</string>
+    <string name="sw_dominator">Dominador psíquico</string>
+    <string name="sw_spyplane">Avión espía</string>
+    <string name="sw_genetic">Mutador genético</string>
+    <string name="sw_shield">Escudo de fuerza</string>
+</resources>
