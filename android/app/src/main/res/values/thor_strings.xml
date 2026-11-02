@@ -21,6 +21,7 @@
     <string name="deck_nothing">Nothing to build here yet</string>
     <string name="deck_ready">READY</string>
     <string name="deck_on_hold">ON HOLD</string>
+    <string name="deck_status">STATUS</string>
     <string name="deck_super">SUPERWEAPONS</string>
     <string name="deck_mode_place">PLACE</string>
     <string name="deck_mode_target">TARGET</string>

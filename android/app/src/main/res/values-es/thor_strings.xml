@@ -21,6 +21,7 @@
     <string name="deck_nothing">Aún no hay nada que construir</string>
     <string name="deck_ready">LISTO</string>
     <string name="deck_on_hold">EN ESPERA</string>
+    <string name="deck_status">ESTADO</string>
     <string name="deck_super">SUPERARMAS</string>
     <string name="deck_mode_place">COLOCAR</string>
     <string name="deck_mode_target">OBJETIVO</string>

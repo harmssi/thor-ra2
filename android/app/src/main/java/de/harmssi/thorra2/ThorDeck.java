@@ -815,7 +815,8 @@ public class ThorDeck extends View {
         int acc = Ui.accent(faction);
         Ui.panel(c, superPanel, Ui.RADIUS * s, Ui.PANEL, Ui.LINE, paint);
         float x = superPanel.left + 18 * s;
-        c.drawText(str(R.string.deck_super), x, superPanel.top + 34 * s, microLabel);
+        c.drawText(supers.isEmpty() ? str(R.string.deck_status) : str(R.string.deck_super), x, superPanel.top + 34 * s,
+                microLabel);
         if (supers.isEmpty()) {
             // Status line instead: what the deck is waiting for.
             String headline, detail;
