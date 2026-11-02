@@ -74,4 +74,37 @@ std::vector<int> take_requests();
 void put_cameo(int key, const std::vector<uint8_t>& rgba, int w, int h);
 void put_name(int key, const std::string& name);
 
+// Game text (UTF-16 from the CSF / map lists) for the engine's single-byte
+// bitmap fonts: ASCII stays, umlauts and accents get a plain spelling
+// (ü -> ue, ß -> ss, é -> e) instead of a blank or '?'.
+inline void append_plain(char16_t c, std::string& out) {
+    if (c < 0x80) { out += static_cast<char>(c); return; }
+    switch (c) {
+        case 0xE4: out += "ae"; return;  case 0xC4: out += "Ae"; return;
+        case 0xF6: out += "oe"; return;  case 0xD6: out += "Oe"; return;
+        case 0xFC: out += "ue"; return;  case 0xDC: out += "Ue"; return;
+        case 0xDF: out += "ss"; return;
+        case 0xE0: case 0xE1: case 0xE2: case 0xE3: case 0xE5: out += 'a'; return;
+        case 0xC0: case 0xC1: case 0xC2: case 0xC3: case 0xC5: out += 'A'; return;
+        case 0xE8: case 0xE9: case 0xEA: case 0xEB: out += 'e'; return;
+        case 0xC8: case 0xC9: case 0xCA: case 0xCB: out += 'E'; return;
+        case 0xEC: case 0xED: case 0xEE: case 0xEF: out += 'i'; return;
+        case 0xF2: case 0xF3: case 0xF4: case 0xF5: out += 'o'; return;
+        case 0xF9: case 0xFA: case 0xFB: out += 'u'; return;
+        case 0xE7: out += 'c'; return;  case 0xC7: out += 'C'; return;
+        case 0xF1: out += 'n'; return;  case 0xD1: out += 'N'; return;
+        case 0x2019: case 0x2018: out += '\''; return;
+        case 0x201C: case 0x201D: case 0x201E: out += '"'; return;
+        case 0x2013: case 0x2014: out += '-'; return;
+        default: out += ' '; return;
+    }
+}
+// The same text as UTF-8 (for the Android deck, which can draw any character).
+inline void append_utf8(char16_t c, std::string& out) {
+    if (c < 0x80) out += static_cast<char>(c);
+    else if (c < 0x800) { out += static_cast<char>(0xC0 | (c >> 6)); out += static_cast<char>(0x80 | (c & 0x3F)); }
+    else { out += static_cast<char>(0xE0 | (c >> 12)); out += static_cast<char>(0x80 | ((c >> 6) & 0x3F));
+           out += static_cast<char>(0x80 | (c & 0x3F)); }
+}
+
 }  // namespace thor

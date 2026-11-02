@@ -5107,8 +5107,49 @@ ra2assets::Palette make_font_palette_tinted(int r, int g, int b) {
     return p;
 }
 
+#if defined(__ANDROID__)
+// Thor RA2: the shell .fnt fonts are single-byte, the German / French / Spanish
+// CSF texts are UTF-8 -- "Zurück" drew as "Zur ck", "Beringstraße" as
+// "Beringstra?e". Decode UTF-8 to Latin-1 and keep the glyph when the font has
+// it, else fall back to a plain spelling (ü -> ue, ß -> ss, é -> e, ...).
+static std::string thor_fnt_text(const ra2assets::Font& font, const std::string& in) {
+    auto has = [&](unsigned c) { return c >= font.first() && c <= font.last() && font.width(c) > 0; };
+    std::string out;
+    for (size_t i = 0; i < in.size();) {
+        const unsigned char c = static_cast<unsigned char>(in[i]);
+        unsigned cp = c;
+        size_t n = 1;
+        if (c >= 0xC0 && c < 0xE0 && i + 1 < in.size()) { cp = ((c & 0x1F) << 6) | (in[i + 1] & 0x3F); n = 2; }
+        else if (c >= 0xE0 && c < 0xF0 && i + 2 < in.size()) { cp = 0xFFFD; n = 3; }
+        else if (c >= 0xF0) { cp = 0xFFFD; n = 4; }
+        i += n;
+        if (cp < 0x80) { out += static_cast<char>(cp); continue; }
+        if (cp < 0x100 && has(cp)) { out += static_cast<char>(cp); continue; }
+        switch (cp) {
+            case 0xE4: out += "ae"; break;  case 0xC4: out += "Ae"; break;
+            case 0xF6: out += "oe"; break;  case 0xD6: out += "Oe"; break;
+            case 0xFC: out += "ue"; break;  case 0xDC: out += "Ue"; break;
+            case 0xDF: out += "ss"; break;
+            case 0xE0: case 0xE1: case 0xE2: out += 'a'; break;
+            case 0xE8: case 0xE9: case 0xEA: case 0xEB: out += 'e'; break;
+            case 0xEC: case 0xED: case 0xEE: case 0xEF: out += 'i'; break;
+            case 0xF2: case 0xF3: case 0xF4: out += 'o'; break;
+            case 0xF9: case 0xFA: case 0xFB: out += 'u'; break;
+            case 0xE7: out += 'c'; break;  case 0xF1: out += 'n'; break;
+            case 0xC9: out += 'E'; break;  case 0xC0: case 0xC1: out += 'A'; break;
+            default: out += ' '; break;
+        }
+    }
+    return out;
+}
+#endif
 // [Task 5] Pixel width of a string in the shell font (for centering labels).
-int fnt_text_width(const ra2assets::Font& font, const std::string& s) {
+int fnt_text_width(const ra2assets::Font& font, const std::string& s_in) {
+#if defined(__ANDROID__)
+    const std::string s = thor_fnt_text(font, s_in);
+#else
+    const std::string& s = s_in;
+#endif
     int w = 0;
     for (unsigned char ch : s) {
         const int cw = font.width(ch);
@@ -5123,8 +5164,13 @@ int fnt_text_width(const ra2assets::Font& font, const std::string& s) {
 // per-glyph TextureCache entries. `scale` enlarges the (small ~16px) glyphs to
 // the 1280x720 menu.
 void draw_fnt_text(SDL_Renderer* ren, ra2engine::TextureCache& tc, const ra2assets::Font& font,
-                   const ra2assets::Palette& pal, const std::string& s, int x, int y,
+                   const ra2assets::Palette& pal, const std::string& s_in, int x, int y,
                    const std::string& keypfx, int scale = 1) {
+#if defined(__ANDROID__)
+    const std::string s = thor_fnt_text(font, s_in);
+#else
+    const std::string& s = s_in;
+#endif
     int cx = x;
     for (unsigned char ch : s) {
         const int w = font.width(ch);
@@ -5154,8 +5200,13 @@ void draw_fnt_text(SDL_Renderer* ren, ra2engine::TextureCache& tc, const ra2asse
 // face inside 16px logical rows, scaled by the letterbox factor). Glyph dst
 // rects are rounded from accumulated float positions so spacing stays even.
 void draw_fnt_text_f(SDL_Renderer* ren, ra2engine::TextureCache& tc, const ra2assets::Font& font,
-                     const ra2assets::Palette& pal, const std::string& s, double x, double y,
+                     const ra2assets::Palette& pal, const std::string& s_in, double x, double y,
                      const std::string& keypfx, double scale) {
+#if defined(__ANDROID__)
+    const std::string s = thor_fnt_text(font, s_in);
+#else
+    const std::string& s = s_in;
+#endif
 #if defined(__ANDROID__)
     {   // Thor RA2: a whole number of device pixels per glyph pixel (even strokes).
         const double k = ra2engine::platform_output_scale();

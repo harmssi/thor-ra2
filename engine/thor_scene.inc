@@ -87,7 +87,12 @@
             if (it != ba_.sw_cameos.end()) shp = &it->second;
             else if (ba_.sw_has_cameo) shp = &ba_.sb_nukeicon;
         }
-        thor::put_name(key, id.empty() ? std::string() : tt_ui_name(id));
+        std::string nm;
+        if (!id.empty()) {   // like tt_ui_name, but UTF-8 (the deck draws real umlauts)
+            const std::string lbl = pres_clean(rules_ini_.get(id, "UIName"));
+            nm = lbl.empty() ? id : camp::csf_text_utf8(dir_, lbl);
+        }
+        thor::put_name(key, nm);
         std::vector<uint8_t> rgba;
         int w = 0, h = 0;
         if (shp && shp->count() > 0) {

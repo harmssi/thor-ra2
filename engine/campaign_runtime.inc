@@ -107,7 +107,27 @@ std::string csf_text(const std::string& dir, const std::string& label) {
     const std::u16string* t = c ? c->find(label) : nullptr;
     if (!t) return label;
     std::string out;
+#if defined(__ANDROID__)
+    for (char16_t ch : *t) {   // Thor RA2: umlauts as ue/ss/... instead of a blank
+        if (ch == '\n') out += '\n';
+        else if (ch < 32 || ch == 127) out += ' ';
+        else thor::append_plain(ch, out);
+    }
+#else
     for (char16_t ch : *t) out += (ch >= 32 && ch < 127) ? (char)ch : (ch == '\n' ? '\n' : ' ');
+#endif
+    return out;
+}
+// Thor RA2: the same text as UTF-8 (the command deck draws real umlauts).
+std::string csf_text_utf8(const std::string& dir, const std::string& label) {
+    const ra2assets::CsfStrings* c = csf(dir);
+    const std::u16string* t = c ? c->find(label) : nullptr;
+    if (!t) return label;
+    std::string out;
+    for (char16_t ch : *t) {
+        if (ch == '\n' || ch < 32) out += ' ';
+        else thor::append_utf8(ch, out);
+    }
     return out;
 }
 

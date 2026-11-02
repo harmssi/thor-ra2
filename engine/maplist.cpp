@@ -1,4 +1,5 @@
 #include "maplist.hpp"
+#include "thor.hpp"
 #include "ra2assets/pkt.hpp"
 #include "ra2assets/fileio.hpp"
 #include <algorithm>
@@ -18,7 +19,11 @@ std::string lower(std::string s) {
 std::string narrow(const std::u16string& u) {
     std::string out;
     out.reserve(u.size());
+#if defined(__ANDROID__)
+    for (char16_t c : u) thor::append_plain(c, out);   // Thor RA2: "Beringstrasse", not "Beringstra?e"
+#else
     for (char16_t c : u) out.push_back(c < 0x80 ? (char)c : '?');
+#endif
     return out;
 }
 
