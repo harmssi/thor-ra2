@@ -20,7 +20,7 @@ std::string narrow(const std::u16string& u) {
     std::string out;
     out.reserve(u.size());
 #if defined(__ANDROID__)
-    for (char16_t c : u) thor::append_plain(c, out);   // Thor RA2: "Beringstrasse", not "Beringstra?e"
+    for (char16_t c : u) thor::append_utf8(c, out);   // Thor RA2: "Beringstraße" (UTF-8), not "Beringstra?e"
 #else
     for (char16_t c : u) out.push_back(c < 0x80 ? (char)c : '?');
 #endif

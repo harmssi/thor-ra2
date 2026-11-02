@@ -108,10 +108,10 @@ std::string csf_text(const std::string& dir, const std::string& label) {
     if (!t) return label;
     std::string out;
 #if defined(__ANDROID__)
-    for (char16_t ch : *t) {   // Thor RA2: umlauts as ue/ss/... instead of a blank
+    for (char16_t ch : *t) {   // Thor RA2: real umlauts (UTF-8); the fonts map them
         if (ch == '\n') out += '\n';
         else if (ch < 32 || ch == 127) out += ' ';
-        else thor::append_plain(ch, out);
+        else thor::append_utf8(ch, out);
     }
 #else
     for (char16_t ch : *t) out += (ch >= 32 && ch < 127) ? (char)ch : (ch == '\n' ? '\n' : ' ');

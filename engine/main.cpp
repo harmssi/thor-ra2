@@ -5125,6 +5125,21 @@ static std::string thor_fnt_text(const ra2assets::Font& font, const std::string&
         i += n;
         if (cp < 0x80) { out += static_cast<char>(cp); continue; }
         if (cp < 0x100 && has(cp)) { out += static_cast<char>(cp); continue; }
+        {   // Westwood .fnt faces are DOS code page 437 (ä = 0x84, ü = 0x81, ß = 0xE1 ...)
+            unsigned dos = 0;
+            switch (cp) {
+                case 0xE4: dos = 0x84; break;  case 0xF6: dos = 0x94; break;  case 0xFC: dos = 0x81; break;
+                case 0xC4: dos = 0x8E; break;  case 0xD6: dos = 0x99; break;  case 0xDC: dos = 0x9A; break;
+                case 0xDF: dos = 0xE1; break;  case 0xE9: dos = 0x82; break;  case 0xE8: dos = 0x8A; break;
+                case 0xEA: dos = 0x88; break;  case 0xE0: dos = 0x85; break;  case 0xE1: dos = 0xA0; break;
+                case 0xE2: dos = 0x83; break;  case 0xE7: dos = 0x87; break;  case 0xF1: dos = 0xA4; break;
+                case 0xD1: dos = 0xA5; break;  case 0xED: dos = 0xA1; break;  case 0xF3: dos = 0xA2; break;
+                case 0xFA: dos = 0xA3; break;  case 0xC9: dos = 0x90; break;  case 0xEE: dos = 0x8C; break;
+                case 0xF4: dos = 0x93; break;  case 0xFB: dos = 0x96; break;  case 0xEF: dos = 0x8B; break;
+                default: break;
+            }
+            if (dos && has(dos)) { out += static_cast<char>(dos); continue; }
+        }
         switch (cp) {
             case 0xE4: out += "ae"; break;  case 0xC4: out += "Ae"; break;
             case 0xF6: out += "oe"; break;  case 0xD6: out += "Oe"; break;
@@ -8566,7 +8581,18 @@ void load_menu_art(const std::string& dir, bool no_audio, MenuArtStore& store) {
             } else std::cerr << "[menu-art] palette.pal not found\n";
             if (const MixEntry* fe = cache.find(std::string("12metfnt.fnt"))) {
                 try { store.font = std::make_unique<ra2assets::Font>(
-                          ra2assets::load_fnt(cache.read(*fe))); }
+                          ra2assets::load_fnt(cache.read(*fe)));
+#if defined(__ANDROID__)
+                      {   // Thor RA2: which Latin-1 letters the shell font can draw
+                          const ra2assets::Font& f = *store.font;
+                          std::string w;
+                          for (int c = 0x80; c <= f.last(); ++c)
+                              if (f.width(c) > 0) w += std::to_string(c) + " ";
+                          SDL_Log("[thor-font] 12metfnt first=%d last=%d glyphs>=0x80: %s", f.first(), f.last(),
+                                  w.c_str());
+                      }
+#endif
+                }
                 catch (const std::exception& ex) {
                     std::cerr << "[menu-art] 12metfnt.fnt: " << ex.what() << "\n"; }
             } else std::cerr << "[menu-art] 12metfnt.fnt not found\n";

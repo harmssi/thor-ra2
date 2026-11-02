@@ -91,6 +91,7 @@
         if (!id.empty()) {   // like tt_ui_name, but UTF-8 (the deck draws real umlauts)
             const std::string lbl = pres_clean(rules_ini_.get(id, "UIName"));
             nm = lbl.empty() ? id : camp::csf_text_utf8(dir_, lbl);
+            if (nm == lbl) nm = id;   // label missing from the CSF: the type id, not "Name:..."
         }
         thor::put_name(key, nm);
         std::vector<uint8_t> rgba;
