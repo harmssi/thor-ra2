@@ -182,6 +182,12 @@ public:
         ru_.min_units = ri("MinUnitCount", 0);
         ru_.max_units = std::max(ru_.min_units, ri("MaxUnitCount", 10));
         ru_.game_speed = ri("GameSpeed", 1);
+#if defined(__ANDROID__)
+        // Thor RA2: the rules default (GameSpeed 1 = slider 5, 4x real time) is far
+        // too fast on a handheld; default to slider 3 (GameSpeed 3, 20 logic fps).
+        // A value the player picked (RA2.INI [Skirmish]) still wins.
+        ru_.game_speed = 3;
+#endif
         ru_.short_game = rb("ShortGame", true);
         ru_.superweapons = rb("SuperWeaponsAllowed", true);
         ru_.build_off_ally = rb("BuildOffAlly", true);

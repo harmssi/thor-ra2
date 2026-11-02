@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Thor RA2: launcher (file check / import), translated from values/strings.xml. -->
+<resources>
+    <string name="setup_title">Fichiers de Red Alert 2 requis</string>
+    <string name="setup_intro">Cette app n\'est qu\'un moteur. Elle lance le Red Alert 2 original avec les fichiers de votre propre exemplaire du jeu ; aucune donnée du jeu n\'est incluse.</string>
+    <string name="setup_folder">Le moteur lit les fichiers depuis :</string>
+    <string name="setup_ready">Tous les fichiers requis sont présents.</string>
+    <string name="setup_missing_required">Manquants (requis) :</string>
+    <string name="setup_missing_optional">Manquants (optionnels, une fonction manque sans eux) :</string>
+    <string name="setup_how">Comment les ajouter :\n 1. Sur le PC, placez les fichiers ci-dessus de votre dossier d\'installation de Red Alert 2 (celui qui contient ra2.mix) dans un dossier RA2 et copiez-le dans le dossier Download de l\'appareil (USB ou adb push vers /sdcard/Download/RA2/).\n 2. Touchez IMPORTER LES FICHIERS. Dans le sélecteur, OUVREZ le dossier RA2 (Android ne permet pas de choisir Download, la racine ou un lecteur entier), puis touchez UTILISER CE DOSSIER et AUTORISER.\n 3. Les fichiers sont copiés dans l\'app (environ 750 Mo, moins d\'une minute) puis le jeu démarre. Laissez cet écran ouvert jusqu\'à la fin de la copie.\n\nVous pouvez aussi les copier par USB (MTP) directement dans le dossier indiqué ci-dessus.</string>
+    <string name="setup_no_files">aucun fichier de Red Alert 2 dans le dossier choisi. Ouvrez le dossier RA2 (celui qui contient ra2.mix) et touchez UTILISER CE DOSSIER.</string>
+    <string name="setup_import">Importer les fichiers</string>
+    <string name="setup_start">Démarrer</string>
+    <string name="setup_exit">Quitter</string>
+    <string name="setup_copying">Copie de %1$s …</string>
+    <string name="setup_imported">%1$d fichier(s) importé(s).</string>
+    <string name="setup_failed">Échec de l\'import : %1$s</string>
+    <string name="setup_title_ready">Fichiers de Red Alert 2</string>
+    <string name="shortcut_import_short">Importer les fichiers</string>
+    <string name="shortcut_import_long">Importer ou remplacer les fichiers du jeu</string>
+    <string name="setup_reimport_note">Vous pouvez réimporter à tout moment pour ajouter ou remplacer des fichiers (cartes de campagne, musique, correctifs, vidéos) : appui long sur l\'icône puis Importer les fichiers, ou dans le jeu Options puis Fichiers du jeu. Sauvegardes et réglages sont conservés.</string>
+</resources>

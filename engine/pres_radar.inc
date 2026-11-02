@@ -154,7 +154,9 @@ public:
         s = std::min(max_w / (uw_ * 1.0), max_h / (vh_ * 0.5));
         TW = std::max(1, static_cast<int>(uw_ * s));
         TH = std::max(1, static_cast<int>(vh_ * 0.5 * s));
-        build_picture(w, ba, s, TW, TH, px);
+        // The deck's large radar: unexplored cells as a dark slate instead of black,
+        // so the outline of the whole map is visible around the explored area.
+        build_picture(w, ba, s, TW, TH, px, ra2assets::Rgba{30, 34, 42, 255});
         return true;
     }
     // Picture pixel (scale s) -> map cell, the inverse of build_picture's projection.
@@ -182,7 +184,7 @@ public:
 
 private:
     void build_picture(const ra2engine::World& w, const BuildingAssets& ba, double s, int TW, int TH,
-                       std::vector<uint8_t>& px) const {
+                       std::vector<uint8_t>& px, ra2assets::Rgba shroud = ra2assets::Rgba{0, 0, 0, 255}) const {
         px.assign(static_cast<std::size_t>(TW) * TH * 4, 0);
         auto plot = [&](int x, int y, ra2assets::Rgba c, double dim) {
             const double u = (x - y - u0_) * s, v = (x + y - v0_) * 0.5 * s;
@@ -202,7 +204,7 @@ private:
             for (int x = 0; x < gw_; ++x) {
                 ra2assets::Rgba c = base_[static_cast<std::size_t>(y) * gw_ + x];
                 if (c.a == 0) continue;
-                if (!w.explored_at(g_local_house, x, y)) { plot(x, y, ra2assets::Rgba{0, 0, 0, 255}, 1.0); continue; }
+                if (!w.explored_at(g_local_house, x, y)) { plot(x, y, shroud, 1.0); continue; }
                 if (w.ore().has_ore(x, y))
                     c = w.ore().kind_at(x, y) == ra2engine::OreKind::Gems ? ra2assets::Rgba{60, 110, 200, 255}
                                                                             : ra2assets::Rgba{200, 170, 40, 255};

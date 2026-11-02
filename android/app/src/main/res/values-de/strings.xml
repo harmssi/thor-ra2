@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Thor RA2: launcher (file check / import), translated from values/strings.xml. -->
+<resources>
+    <string name="setup_title">Red-Alert-2-Spieldateien benötigt</string>
+    <string name="setup_intro">Diese App ist nur eine Engine. Sie spielt das originale Red Alert 2 mit den Spieldateien aus deiner eigenen Kopie des Spiels; es werden keine Spieldaten mitgeliefert.</string>
+    <string name="setup_folder">Die Engine liest die Dateien aus:</string>
+    <string name="setup_ready">Alle Pflichtdateien sind vorhanden.</string>
+    <string name="setup_missing_required">Fehlt (Pflicht):</string>
+    <string name="setup_missing_optional">Fehlt (optional, ohne sie fehlt eine Funktion):</string>
+    <string name="setup_how">So kommen sie aufs Gerät:\n 1. Am PC die oben genannten Dateien aus deinem Red-Alert-2-Installationsordner (der mit ra2.mix) in einen Ordner RA2 legen und diesen in den Download-Ordner des Geräts kopieren (USB-Dateiübertragung oder: adb push nach /sdcard/Download/RA2/).\n 2. SPIELDATEIEN IMPORTIEREN tippen. In der Auswahl den Ordner RA2 selbst ÖFFNEN (Android erlaubt nicht, Download, den Speicherstamm oder ein ganzes Laufwerk zu wählen), dann DIESEN ORDNER VERWENDEN und ZULASSEN tippen. Den Ordner auszuwählen, der RA2 enthält, geht auch.\n 3. Die Dateien werden in die App kopiert (etwa 750 MB, unter einer Minute), danach startet das Spiel. Diesen Bildschirm geöffnet lassen, bis das Kopieren fertig ist.\n\nAlternativ per USB (MTP) direkt in den oben gezeigten Ordner kopieren.</string>
+    <string name="setup_no_files">keine Red-Alert-2-Spieldateien im gewählten Ordner. Den Ordner RA2 selbst (mit ra2.mix) öffnen und DIESEN ORDNER VERWENDEN tippen.</string>
+    <string name="setup_import">Spieldateien importieren</string>
+    <string name="setup_start">Starten</string>
+    <string name="setup_exit">Beenden</string>
+    <string name="setup_copying">Kopiere %1$s …</string>
+    <string name="setup_imported">%1$d Datei(en) importiert.</string>
+    <string name="setup_failed">Import fehlgeschlagen: %1$s</string>
+    <string name="setup_title_ready">Red-Alert-2-Spieldateien</string>
+    <string name="shortcut_import_short">Spieldateien importieren</string>
+    <string name="shortcut_import_long">Spieldateien importieren oder ersetzen</string>
+    <string name="setup_reimport_note">Du kannst jederzeit erneut importieren, um Dateien hinzuzufügen oder zu ersetzen (Kampagnenkarten, Musik, Patches, Filme): App-Symbol lange drücken und Spieldateien importieren wählen, oder im Spiel Optionen, dann Spieldateien. Spielstände und Einstellungen bleiben erhalten. Lief das Spiel schon, liest es die neuen Dateien beim nächsten Start.</string>
+</resources>

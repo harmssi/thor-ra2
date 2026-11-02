@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Thor RA2: launcher (file check / import), translated from values/strings.xml. -->
+<resources>
+    <string name="setup_title">Se necesitan los archivos de Red Alert 2</string>
+    <string name="setup_intro">Esta app es solo un motor. Ejecuta el Red Alert 2 original con los archivos de tu propia copia del juego; no incluye datos del juego.</string>
+    <string name="setup_folder">El motor lee los archivos de:</string>
+    <string name="setup_ready">Están todos los archivos necesarios.</string>
+    <string name="setup_missing_required">Faltan (necesarios):</string>
+    <string name="setup_missing_optional">Faltan (opcionales, sin ellos se pierde una función):</string>
+    <string name="setup_how">Cómo añadirlos:\n 1. En el PC, pon los archivos de arriba de tu carpeta de instalación de Red Alert 2 (la que contiene ra2.mix) en una carpeta llamada RA2 y cópiala a la carpeta Download del dispositivo (USB o adb push a /sdcard/Download/RA2/).\n 2. Toca IMPORTAR ARCHIVOS. En el selector ABRE la carpeta RA2 (Android no permite elegir Download, la raíz ni una unidad completa) y toca USAR ESTA CARPETA y PERMITIR.\n 3. Los archivos se copian a la app (unos 750 MB, menos de un minuto) y el juego empieza. Deja esta pantalla abierta hasta que termine la copia.\n\nTambién puedes copiarlos por USB (MTP) directamente a la carpeta indicada arriba.</string>
+    <string name="setup_no_files">no hay archivos de Red Alert 2 en la carpeta elegida. Abre la carpeta RA2 (la que contiene ra2.mix) y toca USAR ESTA CARPETA.</string>
+    <string name="setup_import">Importar archivos</string>
+    <string name="setup_start">Iniciar</string>
+    <string name="setup_exit">Salir</string>
+    <string name="setup_copying">Copiando %1$s …</string>
+    <string name="setup_imported">%1$d archivo(s) importado(s).</string>
+    <string name="setup_failed">Error al importar: %1$s</string>
+    <string name="setup_title_ready">Archivos de Red Alert 2</string>
+    <string name="shortcut_import_short">Importar archivos</string>
+    <string name="shortcut_import_long">Importar o sustituir los archivos del juego</string>
+    <string name="setup_reimport_note">Puedes volver a importar cuando quieras para añadir o sustituir archivos (mapas de campaña, música, parches, vídeos): mantén pulsado el icono de la app y elige Importar archivos, o en el juego Opciones y luego Archivos del juego. Las partidas y ajustes se conservan.</string>
+</resources>
