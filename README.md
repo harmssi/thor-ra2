@@ -6,7 +6,7 @@ Thor RA2 is an Android (arm64) build of [RA2 Engine](https://github.com/omarelar
 
 - **Top screen (1920×1080):** only the map. The sidebar is gone and the tactical view uses the full width. Menus, briefings and movies are unchanged.
 - **Bottom screen (1240×1080):** a touch command deck with credits, a power meter (red on low power), the radar (tap or drag to move the camera, a "no signal" look without a radar station or power), REPAIR / SELL / MENU, the superweapons with their timers, and four build tabs (buildings, defenses, infantry, vehicles) with the cameos, build progress, READY and ON HOLD.
-- **Controller and touch** on the top screen.
+- **Controller and touch** on the top screen. The upstream touch command column (CMD) is hidden while the deck is shown.
 
 Without a second screen everything stays as in RA2 Engine (sidebar on the right).
 
@@ -66,7 +66,7 @@ The first build creates a signing key in `<work>/keystore/thorra2.jks`; keep it,
 | `engine/thor_scene.inc` | `GameScene` members: runs deck commands through the sidebar code, publishes the snapshot |
 | `engine/pres_radar.inc` | Radar picture shared by the sidebar and the deck |
 | `engine/platform.cpp` | Game controller (virtual mouse, scroll, buttons) |
-| `engine/main.cpp` | Sidebar hidden in dual-screen mode (`sidebar_up_`), hooks |
+| `engine/main.cpp`, `engine/touch_bar.inc` | Sidebar and touch column hidden in dual-screen mode (`sidebar_up_`, `thor::dual()`), hooks |
 | `android/app/src/main/java/de/harmssi/thorra2/` | `ThorActivity` (game activity), `ThorScreens` (presentation on display 4), `ThorDeck` (the deck), `Ui` (design system) |
 | `thor/` | Build scripts, Dockerfile, `copy-data.sh` |
 

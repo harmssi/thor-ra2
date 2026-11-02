@@ -61,7 +61,8 @@ const std::vector<TouchBtn>& touch_buttons() const {
     return campaign_ ? all : no_brief;
 }
 bool touch_bar_visible() const {
-    return touch_ui_ && !menu_.open_ && !sld_.is_open() && !gf_abort_.open() && !input_locked_;
+    // Thor RA2: the command deck replaces the touch column in dual-screen mode.
+    return touch_ui_ && !thor::dual() && !menu_.open_ && !sld_.is_open() && !gf_abort_.open() && !input_locked_;
 }
 // Button i's rectangle: column-major, kTbRows per column, from the top-left.
 SDL_Rect touch_btn_rect(int i) const {
