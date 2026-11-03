@@ -95,3 +95,11 @@ DEALINGS IN THE SOFTWARE.
 
 The APK ships `libc++_shared.so` from the Android NDK (LLVM libc++,
 Apache License 2.0 with LLVM Exceptions).
+
+## Inter and JetBrains Mono fonts (Thor RA2 command deck)
+
+`android/app/src/main/assets/fonts/` -- Inter (Copyright (c) 2016 The Inter
+Project Authors) and JetBrains Mono (Copyright 2020 The JetBrains Mono Project
+Authors), both under the SIL Open Font License 1.1. The full licence texts ship
+in the APK as `assets/licenses/Inter-OFL.txt` and
+`assets/licenses/JetBrainsMono-OFL.txt`.

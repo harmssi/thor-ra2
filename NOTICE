@@ -1,0 +1,23 @@
+Thor RA2
+========
+
+Thor RA2 is a fork of RA2 Engine (https://github.com/omarelarab/ra2-engine)
+by Omar El Arab, licensed under the Zero-Clause BSD licence (see LICENSE).
+Thor RA2's own changes (the command deck, the Android shell, the build
+scripts) are released under the same 0BSD licence.
+
+Third-party components keep their own licences; they are listed with their
+licence texts in THIRD_PARTY_NOTICES.md:
+
+  - SDL 2.30.9 ............................ zlib licence
+  - stb_image_write ....................... MIT (or public domain)
+  - doctest (tests only, not shipped) ..... MIT
+  - LLVM libc++ (Android NDK) ............. Apache 2.0 with LLVM exceptions
+  - Inter, JetBrains Mono fonts ........... SIL Open Font License 1.1
+
+The APK ships LICENSE, THIRD_PARTY_NOTICES.md and the two OFL texts in its
+assets.
+
+No game data is included. Command & Conquer, Red Alert and Yuri's Revenge are
+trademarks or registered trademarks of Electronic Arts Inc. This project is
+not affiliated with, endorsed by or sponsored by Electronic Arts.

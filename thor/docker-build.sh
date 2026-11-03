@@ -10,16 +10,19 @@ W=/work
 APP=$W/src/android
 mkdir -p $W/keystore $W/out $W/gradle-home
 
+# The password lives next to the key on the build host (never in the repository).
 if [ ! -f $W/keystore/thorra2.jks ]; then
-    keytool -genkeypair -v -keystore $W/keystore/thorra2.jks -storepass thorra2 -keypass thorra2 \
-        -alias thorra2 -keyalg RSA -keysize 2048 -validity 20000 \
+    head -c 24 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' > $W/keystore/thorra2.pass
+    keytool -genkeypair -v -keystore $W/keystore/thorra2.jks -storepass "$(cat $W/keystore/thorra2.pass)" \
+        -keypass "$(cat $W/keystore/thorra2.pass)" -alias thorra2 -keyalg RSA -keysize 2048 -validity 20000 \
         -dname "CN=Thor RA2, O=harmssi, C=DE"
 fi
+PASS=$(cat $W/keystore/thorra2.pass)
 cat > $APP/keystore.properties <<PROPS
 storeFile=$W/keystore/thorra2.jks
-storePassword=${THOR_KEYSTORE_PASS:-thorra2}
+storePassword=$PASS
 keyAlias=thorra2
-keyPassword=${THOR_KEYSTORE_PASS:-thorra2}
+keyPassword=$PASS
 PROPS
 
 CMAKE_BIN=$(command -v cmake)

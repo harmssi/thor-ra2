@@ -2,6 +2,24 @@
 
 **Red Alert 2 / Yuri's Revenge on the AYN Thor, native, with a command deck on the second screen.**
 
+> Not affiliated with, endorsed by or sponsored by Electronic Arts. No game data included: you need your own copy of Red Alert 2 with Yuri's Revenge.
+
+<!-- Video: [Thor RA2 on the AYN Thor](https://youtu.be/VIDEO_ID) -->
+<!-- Video: [Command deck walkthrough](https://youtu.be/VIDEO_ID) -->
+
+## Quick start
+
+1. **Install the APK.** Download `ThorRA2-v0.1.0.apk` from [Releases](../../releases) on the Thor. In Chrome tap **Download anyway**, open the file, the **Package installer** asks for permission: **Settings → Allow from this source**, go back, **Install**.
+2. **Get your game files.** From your Red Alert 2 / Yuri's Revenge install (Steam: `steamapps/common/Command & Conquer Red Alert II`, or The First Decade / EA App) copy every `.mix` and `.csf` file, about 1 GB. Required: `ra2.mix`, `ra2md.mix`, `language.mix`, `multimd.mix`. Recommended: `langmd.mix`, `theme.mix`, `thememd.mix`, `maps01.mix`, `maps02.mix`, `mapsmd03.mix`, `expandmd01.mix`, the `movies*.mix` / `movmd03.mix` archives.
+3. **Put them on the Thor** in a folder `Download/RA2` (USB file transfer or `adb push`).
+4. **Start Thor RA2.** Tap **Import game files**, open the `RA2` folder, **Use this folder → Allow**. The files are copied into the app's own folder (`Android/data/de.harmssi.thorra2/files/ra2/`) and the game starts. Next time it starts straight away.
+
+**Permissions:** none to grant. The import uses Android's folder picker (no storage permission). Internet / Wi-Fi state are only used for LAN and online multiplayer.
+
+If it works for you, a ⭐ on GitHub helps.
+
+---
+
 Thor RA2 is an Android (arm64) build of [RA2 Engine](https://github.com/omarelarab/ra2-engine) by Omar El Arab, an open-source engine for *Command & Conquer: Red Alert 2 – Yuri's Revenge*, made for the AYN Thor dual-screen handheld:
 
 - **Top screen (1920×1080):** only the map. The sidebar is gone and the tactical view uses the full width. Menus, briefings and movies are unchanged.
@@ -12,7 +30,7 @@ Without a second screen everything stays as in RA2 Engine (sidebar on the right)
 
 > Thor RA2 ships **no game data**. It runs on the original files from your own copy of the game (Red Alert 2 with Yuri's Revenge, e.g. *The First Decade*, Origin / EA App or Steam). Cameos and the radar are rendered at runtime from those files.
 
-Status: **milestone 1** (deck works in skirmish and campaign; see [Known limitations](#known-limitations)).
+Status: **v0.1.0**, first release (see [Known limitations](#known-limitations)).
 
 ---
 
@@ -56,7 +74,7 @@ thor/build.sh --install  # also adb install -r
 
 `build.sh` syncs the tree to a Linux build host (`THOR_BUILD_HOST=user@host`, work directory `THOR_RA2_REMOTE`, default `/mnt/cache/thor-ra2`) and runs `thor/docker-build.sh` in the Docker image `thor-build` (build it once with `docker build -t thor-build thor/`, see `thor/Dockerfile`: Ubuntu 22.04, JDK 17, Android SDK 35, NDK 27.2.12479018, Gradle 8.9, CMake 3.31, Ninja).
 
-The first build creates a signing key in `<work>/keystore/thorra2.jks`; keep it, so later builds install as updates.
+The first build creates a signing key `<work>/keystore/thorra2.jks` with a random password in `thorra2.pass` next to it (both stay on the build host, never in the repository); keep them, so later builds install as updates.
 
 ### Layout
 
@@ -76,12 +94,14 @@ Engine changes are small and marked `Thor RA2`; with `thor::dual()` false the en
 
 - The game is the RA2 Engine beta (0.9): Yuri's side and campaign are not playable yet, see [README.upstream.md](README.upstream.md#known-limitations).
 - The shell menus have no controller navigation; the cursor works there (A = click).
-- The launcher is upstream's file check / import screen (English only).
+- The launcher is upstream's file check / import screen (English, German, Spanish, French).
+- The shell menu font has no ß; menus spell it "ss". Umlauts and accents are shown.
+- Android 8.0 or later (arm64); made and tested for the AYN Thor.
 
 ## Credits & license
 
 - **RA2 Engine** by Omar El Arab, [github.com/omarelarab/ra2-engine](https://github.com/omarelarab/ra2-engine), Zero-Clause BSD (0BSD), see [LICENSE](LICENSE) and [README.upstream.md](README.upstream.md)
-- Third-party components keep their own licences, see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) (SDL2: zlib)
+- Third-party components keep their own licences, see [NOTICE](NOTICE) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) (SDL2: zlib)
 - Fonts: [Inter](https://rsms.me/inter/) and [JetBrains Mono](https://www.jetbrains.com/lp/mono/), SIL Open Font License 1.1 (`android/app/src/main/assets/licenses/`)
 - The deck, its icons, the emblem and the app icon are original work. No EA / Westwood logos, fonts or artwork are included. Cameos and the radar are rendered at runtime from the player's own game files.
 - Thor RA2's own changes are released under the same 0BSD licence.
