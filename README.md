@@ -4,8 +4,8 @@
 
 > Not affiliated with, endorsed by or sponsored by Electronic Arts. No game data included: you need your own copy of Red Alert 2 with Yuri's Revenge.
 
-<!-- Video: [Thor RA2 on the AYN Thor](https://youtu.be/VIDEO_ID) -->
-<!-- Video: [Command deck walkthrough](https://youtu.be/VIDEO_ID) -->
+▶ **[Watch the install guide](https://youtu.be/hMupGiEim60)** (3 min)
+<!-- Video: [Showcase](https://youtu.be/VIDEO_ID) -->
 
 ## Quick start
 
