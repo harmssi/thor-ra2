@@ -25,7 +25,7 @@ import java.util.Map;
 /**
  * Command deck for the AYN Thor's bottom screen (display 4, 1240x1080).
  *
- * Header (credits, power, side + mode) · radar · REPAIR / SELL / MENU · superweapons ·
+ * Header (credits, power, side + mode) · radar · REPAIR / SELL / MENU / ZOOM · superweapons ·
  * build tabs (buildings, defenses, infantry, vehicles) with the cameos from the player's
  * own game files. All data is a snapshot from the engine (engine/thor_scene.inc); every
  * action goes back as a command and runs through the engine's sidebar code.
@@ -75,7 +75,7 @@ public class ThorDeck extends View {
     private float s = 1f;
     private final RectF header = new RectF();
     private final RectF radarPanel = new RectF(), radarArea = new RectF();
-    private final RectF btnRepair = new RectF(), btnSell = new RectF(), btnMenu = new RectF();
+    private final RectF btnRepair = new RectF(), btnSell = new RectF(), btnMenu = new RectF(), btnZoom = new RectF();
     private final RectF superPanel = new RectF();
     private final RectF[] tabRect = {new RectF(), new RectF(), new RectF(), new RectF()};
     private final RectF gridPanel = new RectF(), gridArea = new RectF();
@@ -303,10 +303,11 @@ public class ThorDeck extends View {
         radarArea.set(radarPanel.left + 16 * s, radarPanel.top + 48 * s, radarPanel.right - 16 * s,
                 radarPanel.bottom - 16 * s);
         float by = radarPanel.bottom + 18 * s, bh = 96 * s, gap = 12 * s;
-        float bw = (leftW - 2 * gap) / 3f;
+        float bw = (leftW - 3 * gap) / 4f;
         btnRepair.set(m, by, m + bw, by + bh);
         btnSell.set(btnRepair.right + gap, by, btnRepair.right + gap + bw, by + bh);
-        btnMenu.set(btnSell.right + gap, by, m + leftW, by + bh);
+        btnMenu.set(btnSell.right + gap, by, btnSell.right + gap + bw, by + bh);
+        btnZoom.set(btnMenu.right + gap, by, m + leftW, by + bh);
         groupPanel.set(m, btnRepair.bottom + 18 * s, m + leftW, btnRepair.bottom + 146 * s);
         float gw = (leftW - 24 * s - 4 * 8 * s) / 5f;
         for (int i = 0; i < 5; i++) {
@@ -354,6 +355,7 @@ public class ThorDeck extends View {
         drawButton(c, btnRepair, str(R.string.deck_repair), rep, glyphWrench());
         drawButton(c, btnSell, str(R.string.deck_sell), sell, glyphDollar());
         drawButton(c, btnMenu, str(R.string.deck_menu), (flags & ThorBridge.F_PAUSED) != 0, glyphMenu());
+        drawButton(c, btnZoom, "ZOOM " + zoom() + "%", zoom() > 100, glyphZoom());
         drawGroups(c);
         drawSupers(c);
         for (int i = 0; i < 4; i++) {
@@ -564,6 +566,10 @@ public class ThorDeck extends View {
         drawGlyph(c, glyph, r.centerX() - 14 * s, r.top + 16 * s, col);
         Paint lp = Ui.label(15 * s, col);
         float tw = lp.measureText(label) - lp.getLetterSpacing() * lp.getTextSize();
+        if (tw > r.width() - 12 * s) { // four buttons in a row: long words (REPARIEREN) shrink to fit
+            lp.setTextSize(lp.getTextSize() * (r.width() - 12 * s) / tw);
+            tw = lp.measureText(label) - lp.getLetterSpacing() * lp.getTextSize();
+        }
         c.drawText(label, r.centerX() - tw / 2, r.bottom - 16 * s, lp);
     }
 
@@ -603,6 +609,31 @@ public class ThorDeck extends View {
         p.moveTo(14, 2);
         p.lineTo(14, 31);
         return p;
+    }
+
+    private static Path glyphZoom() {
+        Path p = new Path();
+        p.addCircle(12, 12, 8, Path.Direction.CW);
+        p.moveTo(18, 18);
+        p.lineTo(26, 26);
+        p.moveTo(8, 12);
+        p.lineTo(16, 12);
+        p.moveTo(12, 8);
+        p.lineTo(12, 16);
+        return p;
+    }
+
+    private int zoom() {
+        return getContext().getSharedPreferences(ThorBridge.PREFS, Context.MODE_PRIVATE).getInt(ThorBridge.PREF_ZOOM, 100);
+    }
+
+    /** ZOOM: 100 -> 125 -> 150 -> 100 %, saved; the engine re-lays the canvas live. */
+    private void cycleZoom() {
+        int z = zoom() >= 150 ? 100 : zoom() + 25;
+        getContext().getSharedPreferences(ThorBridge.PREFS, Context.MODE_PRIVATE).edit().putInt(ThorBridge.PREF_ZOOM, z).apply();
+        ThorBridge.zoom(z);
+        lastAction = "ZOOM " + z + "%";
+        lastActionAt = SystemClock.uptimeMillis();
     }
 
     private static Path glyphMenu() {
@@ -1041,6 +1072,8 @@ public class ThorDeck extends View {
                     downButton = btnSell;
                 } else if (btnMenu.contains(x, y)) {
                     downButton = btnMenu;
+                } else if (btnZoom.contains(x, y)) {
+                    downButton = btnZoom;
                 } else if (groupPanel.contains(x, y)) {
                     for (int i = 0; i < 5; i++) {
                         if (groupRect[i].contains(x, y)) {
@@ -1098,6 +1131,8 @@ public class ThorDeck extends View {
                         ThorBridge.push(ThorBridge.CMD_REPAIR, 0, 0, 0);
                     } else if (downButton == btnSell) {
                         ThorBridge.push(ThorBridge.CMD_SELL, 0, 0, 0);
+                    } else if (downButton == btnZoom) {
+                        cycleZoom();
                     } else {
                         ThorBridge.push(ThorBridge.CMD_MENU, 0, 0, 0);
                     }

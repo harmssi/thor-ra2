@@ -63,6 +63,8 @@ enum : int { kKindBuilding = 0, kKindUnit = 1, kKindSuper = 2 };
 
 bool dual();                       // deck on a second screen: hide the sidebar
 void set_dual(bool on);
+int zoom();                        // game picture zoom in percent (100 = the default canvas)
+void set_zoom(int percent);
 bool pop_command(ThorCommand& out);   // game thread
 void push_command(const ThorCommand& c);
 

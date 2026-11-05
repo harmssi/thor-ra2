@@ -66,7 +66,7 @@ public class SetupActivity extends Activity {
      * W6-06-06: the file a picked document is copied to (relative to the data
      * dir), or null when the engine does not read it. The fixed FILES keep
      * their retail spelling; the patch archives the desktop AssetFS scans
-     * (src/asset_fs.cpp: expandNN / ecacheNN / elocalNN), thememd.mix and the
+     * (src/asset_fs.cpp: expandNN / expandmdNN / ecacheNN / elocalNN), thememd.mix and the
      * movies (MOVIESnn.MIX / MOVMDnn.MIX archives and loose .bik files, which
      * engine/movie_player.inc finds in the data dir and its Movies/ folder,
      * case-insensitively) are copied too.
@@ -75,7 +75,7 @@ public class SetupActivity extends Activity {
         if (name == null) return null;
         String l = name.toLowerCase(Locale.ROOT);
         for (String f : FILES) if (f.toLowerCase(Locale.ROOT).equals(l)) return f;
-        if (l.matches("(expand|ecache|elocal)\\d\\d\\.mix")) return l;
+        if (l.matches("(expand|expandmd|ecache|elocal)\\d\\d\\.mix")) return l;
         if (l.equals("thememd.mix")) return l;
         if (l.matches("(movies\\d\\d|movmd\\d\\d)\\.mix")) return l;
         if (l.endsWith(".bik") && l.length() > 4) return "Movies/" + l;

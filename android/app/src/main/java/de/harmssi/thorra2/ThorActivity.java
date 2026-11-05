@@ -28,6 +28,7 @@ public class ThorActivity extends RA2Activity {
         boolean dual = !getIntent().getBooleanExtra(EXTRA_SINGLE, false) && ThorScreens.hasSecondScreen(this);
         try {
             ThorBridge.setDualScreen(dual);
+            ThorBridge.setZoom(getSharedPreferences(ThorBridge.PREFS, MODE_PRIVATE).getInt(ThorBridge.PREF_ZOOM, 100));
         } catch (UnsatisfiedLinkError e) {
             Log.w(TAG, "engine bridge missing", e);
             dual = false;

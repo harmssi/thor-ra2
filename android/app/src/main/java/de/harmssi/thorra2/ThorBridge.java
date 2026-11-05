@@ -30,6 +30,8 @@ final class ThorBridge {
     static final int ST_AVAILABLE = 0, ST_BUILDING = 1, ST_ON_HOLD = 2, ST_READY = 3, ST_DISABLED = 4;
 
     static native void setDualScreen(boolean on);
+    /** Game picture zoom in percent (100 = default canvas); applied live by the engine. */
+    static native void setZoom(int percent);
     static native void pushCommand(int type, int a, int b, int c);
     /** out[0] = age of the snapshot (ms), then the header; returns the ints written (0 = no game). */
     static native int snapshot(int[] out);
@@ -39,6 +41,16 @@ final class ThorBridge {
     static native int cameo(int key, int[] out, int[] wh);
     /** Item name from the player's game text ("" until the engine has answered). */
     static native String itemName(int key);
+
+    static final String PREFS = "thor", PREF_ZOOM = "zoom";
+
+    static void zoom(int percent) {
+        try {
+            setZoom(percent);
+        } catch (UnsatisfiedLinkError ignored) {
+            // engine not loaded
+        }
+    }
 
     static void push(int type, int a, int b, int c) {
         try {

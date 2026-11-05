@@ -22,14 +22,14 @@ If it works for you, a ⭐ on GitHub helps.
 Thor RA2 is an Android (arm64) build of [RA2 Engine](https://github.com/omarelarab/ra2-engine) by Omar El Arab, an open-source engine for *Command & Conquer: Red Alert 2 – Yuri's Revenge*, made for the AYN Thor dual-screen handheld:
 
 - **Top screen (1920×1080):** only the map. The sidebar is gone and the tactical view uses the full width. Menus, briefings and movies are unchanged.
-- **Bottom screen (1240×1080):** a touch command deck with credits, a power meter (red on low power), the radar (tap or drag to move the camera, a "no signal" look without a radar station or power), REPAIR / SELL / MENU, control groups 1–5, the superweapons with their timers, and four build tabs (buildings, defenses, infantry, vehicles) with the cameos, build progress, READY and ON HOLD.
+- **Bottom screen (1240×1080):** a touch command deck with credits, a power meter (red on low power), the radar (tap or drag to move the camera, a "no signal" look without a radar station or power), REPAIR / SELL / MENU / ZOOM, control groups 1–5, the superweapons with their timers, and four build tabs (buildings, defenses, infantry, vehicles) with the cameos, build progress, READY and ON HOLD.
 - **Controller and touch** on the top screen. The upstream touch command column (CMD) is hidden while the deck is shown.
 
 Without a second screen everything stays as in RA2 Engine (sidebar on the right).
 
 > Thor RA2 ships **no game data**. It runs on the original files from your own copy of the game (Red Alert 2 with Yuri's Revenge, e.g. *The First Decade*, Origin / EA App or Steam). Cameos and the radar are rendered at runtime from those files.
 
-Status: **v0.2.0** (control groups on the deck, D-pad in the menus) (see [Known limitations](#known-limitations)).
+Status: **v0.2.1** (ZOOM for the game picture, `expandmd01.mix` import) (see [Known limitations](#known-limitations)).
 
 ---
 
@@ -42,6 +42,7 @@ Status: **v0.2.0** (control groups on the deck, D-pad in the menus) (see [Known 
 | **Build deck** | Tap = build, or place when READY (then tap the spot on the top screen). Buildings: tap again while building = hold. Units: every tap queues one more (×N badge). Long-press = hold, then cancel. The progress sweep is drawn over the cameo. The accent color follows the side: amber for the Allies, red for the Soviets. |
 | **Radar** | Rendered from the engine's own radar picture (terrain, ore, shroud, buildings, units) with the camera frame. Tap or drag to scroll the map. |
 | **Control groups** | Groups 1–5 with their unit count. Tap = select the group (the engine's `1`–`5` key), tap again = camera to the group, long-press = save the current selection as that group (`Ctrl`+`1`–`5`). A group is highlighted while it is the whole selection. |
+| **Zoom** | **ZOOM** on the deck cycles the game picture 100 % → 125 % → 150 % live, mid-game (bigger units and infantry, less map on screen). The engine just uses a smaller canvas and scales it to the top screen; touch, selection box, radar frame and group camera follow. The setting is kept. |
 | **Superweapons** | Each superweapon with its cameo, a countdown and a charge bar; tap when READY to pick a target on the top screen. |
 | **Controller** | Left stick = cursor, A = left click, B = right click, right stick / D-pad = scroll, Start = options menu, Back = centre on base, X = deploy, Y = stop, L3 (hold) = force fire. **L1 / R1** switch the deck's build tab. In the shell menus the **D-pad** jumps the cursor from button to button, A presses. |
 | **Languages** | Deck in English (default), Deutsch, Español, Français, following the system / per-app language. |
@@ -92,6 +93,7 @@ Engine changes are small and marked `Thor RA2`; with `thor::dual()` false the en
 
 ## Changelog
 
+- **0.2.1**: ZOOM button on the deck (100 / 125 / 150 %, live, saved); the importer now also copies `expandmd01.mix` (and other `expandmdNN.mix`).
 - **0.2.0**: control groups 1–5 on the deck (tap / double tap / long-press, unit count); D-pad navigation in the shell menus; radar panel slightly smaller.
 - **0.1.0**: first release.
 

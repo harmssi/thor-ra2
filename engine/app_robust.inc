@@ -44,6 +44,8 @@ void game_logical_size(int& out_w, int& out_h) {
         lh = static_cast<int>(std::lround(h / (0.75 * px_per_dp)));
         lh = std::max(520, std::min(720, lh)) & ~1;
     }
+    // Thor RA2: the deck's ZOOM (no sidebar on the top screen, so a shorter canvas is fine).
+    if (thor::dual()) lh = (lh * 100 / thor::zoom()) & ~1;
 #endif
     const int lw = static_cast<int>(std::lround(static_cast<double>(lh) * w / h)) & ~1;
     out_h = lh;

@@ -13,8 +13,14 @@
     double thor_radar_s_ = 0.0;
     int thor_radar_tw_ = 0, thor_radar_th_ = 0;
 
+    int thor_zoom_ = thor::zoom();
+
     void thor_tick() {
         if (!thor::dual()) return;
+        if (thor_zoom_ != thor::zoom()) {   // the deck's ZOOM: the panel-resize path (R-162)
+            thor_zoom_ = thor::zoom();
+            relayout_canvas();
+        }
         ++thor_tick_;
         thor_run_commands();
         for (int key : thor::take_requests()) thor_answer(key);
