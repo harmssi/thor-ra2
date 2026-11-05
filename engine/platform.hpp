@@ -82,6 +82,11 @@ public:
     bool touch_hold(int& x, int& y, float& progress) const;
     // Thor RA2: the controller's virtual pointer while the pad is in use.
     bool pad_cursor(int& x, int& y) const;
+    // Thor RA2: shell menus -- the D-pad reports a direction (take_nav) instead
+    // of scrolling; pad_warp moves the controller cursor there (a PointerMove).
+    void set_menu_nav(bool on);
+    bool take_nav(int& dx, int& dy, int& x, int& y);   // x, y: the cursor, -1 = none yet
+    void pad_warp(int x, int y);
 private:
     Platform() = default;
     struct Impl; Impl* p_ = nullptr;

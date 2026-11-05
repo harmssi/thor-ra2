@@ -18,12 +18,13 @@ final class ThorBridge {
     static final int CMD_MENU = 5;    // Esc -> options menu
     static final int CMD_TAB = 6;     // a = tab
     static final int CMD_SUPER = 7;   // a = superweapon type
+    static final int CMD_GROUP = 8;   // a = group 1..5, b = 1 save the selection (Ctrl+n) / 0 select (n)
 
     // Snapshot header (after out[0] = age in ms)
     static final int H_VERSION = 0, H_IN_GAME = 1, H_CREDITS = 2, H_POWER_OUT = 3, H_POWER_DRAIN = 4, H_FLAGS = 5,
             H_FACTION = 6, H_TAB = 7, H_TABS = 8, H_RADAR_W = 9, H_RADAR_H = 10, H_VIEW_X = 11, H_VIEW_Y = 12,
-            H_VIEW_W = 13, H_VIEW_H = 14, H_ITEMS = 15, H_SUPERS = 16, H_RADAR_SERIAL = 17, H_GENERATION = 18;
-    static final int HEADER = 20, ITEM = 7, SUPER = 5;
+            H_VIEW_W = 13, H_VIEW_H = 14, H_ITEMS = 15, H_SUPERS = 16, H_RADAR_SERIAL = 17, H_GENERATION = 18, H_GROUPS = 19;
+    static final int HEADER = 20, ITEM = 7, SUPER = 5, GROUP = 2; // group: members, selected
     static final int F_RADAR = 1, F_REPAIR = 2, F_SELL = 4, F_PLACING = 8, F_TARGETING = 16, F_LOW_POWER = 32,
             F_RADAR_BUILDING = 64, F_LOCKED = 128, F_PAUSED = 256;
     static final int ST_AVAILABLE = 0, ST_BUILDING = 1, ST_ON_HOLD = 2, ST_READY = 3, ST_DISABLED = 4;

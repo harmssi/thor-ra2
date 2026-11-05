@@ -55,4 +55,8 @@
     <string name="sw_spyplane">Spy Plane</string>
     <string name="sw_genetic">Genetic Mutator</string>
     <string name="sw_shield">Force Shield</string>
+    <string name="deck_groups">GROUPS</string>
+    <string name="deck_groups_hint">HOLD = SAVE</string>
+    <string name="deck_act_group">Group %1$d selected</string>
+    <string name="deck_act_group_set">Group %1$d saved</string>
 </resources>

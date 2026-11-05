@@ -55,4 +55,8 @@
     <string name="sw_spyplane">Avion espion</string>
     <string name="sw_genetic">Mutateur génétique</string>
     <string name="sw_shield">Bouclier de force</string>
+    <string name="deck_groups">GROUPES</string>
+    <string name="deck_groups_hint">MAINTENIR = ENREGISTRER</string>
+    <string name="deck_act_group">Groupe %1$d sélectionné</string>
+    <string name="deck_act_group_set">Groupe %1$d enregistré</string>
 </resources>

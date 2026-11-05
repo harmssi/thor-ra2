@@ -8,7 +8,7 @@
 
 ## Quick start
 
-1. **Install the APK.** Download `ThorRA2-v0.1.0.apk` from [Releases](../../releases) on the Thor. In Chrome tap **Download anyway**, open the file, the **Package installer** asks for permission: **Settings → Allow from this source**, go back (you land in the download list) and **tap the APK again**, then **Install**.
+1. **Install the APK.** Download `ThorRA2-v0.2.0.apk` from [Releases](../../releases) on the Thor. In Chrome tap **Download anyway**, open the file, the **Package installer** asks for permission: **Settings → Allow from this source**, go back (you land in the download list) and **tap the APK again**, then **Install**.
 2. **Get your game files.** From your Red Alert 2 / Yuri's Revenge install (Steam: `steamapps/common/Command & Conquer Red Alert II`, or The First Decade / EA App) copy every `.mix` and `.csf` file, about 1 GB. Required: `ra2.mix`, `ra2md.mix`, `language.mix`, `multimd.mix`. Recommended: `langmd.mix`, `theme.mix`, `thememd.mix`, `maps01.mix`, `maps02.mix`, `mapsmd03.mix`, `expandmd01.mix`, the `movies*.mix` / `movmd03.mix` archives.
 3. **Put them on the Thor** in a folder `Download/RA2` (USB file transfer or `adb push`).
 4. **Start Thor RA2.** Tap **Import game files**, open the `RA2` folder, **Use this folder → Allow**. The files are copied into the app's own folder (`Android/data/de.harmssi.thorra2/files/ra2/`) and the game starts. Next time it starts straight away.
@@ -22,14 +22,14 @@ If it works for you, a ⭐ on GitHub helps.
 Thor RA2 is an Android (arm64) build of [RA2 Engine](https://github.com/omarelarab/ra2-engine) by Omar El Arab, an open-source engine for *Command & Conquer: Red Alert 2 – Yuri's Revenge*, made for the AYN Thor dual-screen handheld:
 
 - **Top screen (1920×1080):** only the map. The sidebar is gone and the tactical view uses the full width. Menus, briefings and movies are unchanged.
-- **Bottom screen (1240×1080):** a touch command deck with credits, a power meter (red on low power), the radar (tap or drag to move the camera, a "no signal" look without a radar station or power), REPAIR / SELL / MENU, the superweapons with their timers, and four build tabs (buildings, defenses, infantry, vehicles) with the cameos, build progress, READY and ON HOLD.
+- **Bottom screen (1240×1080):** a touch command deck with credits, a power meter (red on low power), the radar (tap or drag to move the camera, a "no signal" look without a radar station or power), REPAIR / SELL / MENU, control groups 1–5, the superweapons with their timers, and four build tabs (buildings, defenses, infantry, vehicles) with the cameos, build progress, READY and ON HOLD.
 - **Controller and touch** on the top screen. The upstream touch command column (CMD) is hidden while the deck is shown.
 
 Without a second screen everything stays as in RA2 Engine (sidebar on the right).
 
 > Thor RA2 ships **no game data**. It runs on the original files from your own copy of the game (Red Alert 2 with Yuri's Revenge, e.g. *The First Decade*, Origin / EA App or Steam). Cameos and the radar are rendered at runtime from those files.
 
-Status: **v0.1.0**, first release (see [Known limitations](#known-limitations)).
+Status: **v0.2.0** (control groups on the deck, D-pad in the menus) (see [Known limitations](#known-limitations)).
 
 ---
 
@@ -41,8 +41,9 @@ Status: **v0.1.0**, first release (see [Known limitations](#known-limitations)).
 | **Engine-faithful** | Every deck action goes through the engine's normal sidebar path: a cameo tap runs the sidebar's cameo click (start, queue, hold, cancel, place), a tab tap is the tab button, REPAIR / SELL are the sidebar buttons, a radar tap centres the view like a radar click, MENU is the Esc key. The deck never changes game state directly. |
 | **Build deck** | Tap = build, or place when READY (then tap the spot on the top screen). Buildings: tap again while building = hold. Units: every tap queues one more (×N badge). Long-press = hold, then cancel. The progress sweep is drawn over the cameo. The accent color follows the side: amber for the Allies, red for the Soviets. |
 | **Radar** | Rendered from the engine's own radar picture (terrain, ore, shroud, buildings, units) with the camera frame. Tap or drag to scroll the map. |
+| **Control groups** | Groups 1–5 with their unit count. Tap = select the group (the engine's `1`–`5` key), tap again = camera to the group, long-press = save the current selection as that group (`Ctrl`+`1`–`5`). A group is highlighted while it is the whole selection. |
 | **Superweapons** | Each superweapon with its cameo, a countdown and a charge bar; tap when READY to pick a target on the top screen. |
-| **Controller** | Left stick = cursor, A = left click, B = right click, right stick / D-pad = scroll, Start = options menu, Back = centre on base, X = deploy, Y = stop, L3 (hold) = force fire. **L1 / R1** switch the deck's build tab. |
+| **Controller** | Left stick = cursor, A = left click, B = right click, right stick / D-pad = scroll, Start = options menu, Back = centre on base, X = deploy, Y = stop, L3 (hold) = force fire. **L1 / R1** switch the deck's build tab. In the shell menus the **D-pad** jumps the cursor from button to button, A presses. |
 | **Languages** | Deck in English (default), Deutsch, Español, Français, following the system / per-app language. |
 
 ## Game data
@@ -89,10 +90,15 @@ The first build creates a signing key `<work>/keystore/thorra2.jks` with a rando
 
 Engine changes are small and marked `Thor RA2`; with `thor::dual()` false the engine behaves like upstream.
 
+## Changelog
+
+- **0.2.0**: control groups 1–5 on the deck (tap / double tap / long-press, unit count); D-pad navigation in the shell menus; radar panel slightly smaller.
+- **0.1.0**: first release.
+
 ## Known limitations
 
 - The game is the RA2 Engine beta (0.9): Yuri's side and campaign are not playable yet, see [README.upstream.md](README.upstream.md#known-limitations).
-- The shell menus have no controller navigation; the cursor works there (A = click).
+- Menu D-pad navigation jumps between the buttons, list entries and checkboxes; sliders (and some drop-down lists) still need the stick cursor. The in-game options menu uses the stick cursor.
 - The launcher is upstream's file check / import screen (English, German, Spanish, French).
 - The shell menu font has no ß; menus spell it "ss". Umlauts and accents are shown.
 - Android 8.0 or later (arm64); made and tested for the AYN Thor.

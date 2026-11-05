@@ -5958,6 +5958,34 @@ int g_play_canvas_w = 0, g_play_canvas_h = 0;
 // with no wall clock and no frame delay (deterministic); `hooks` observes
 // every frame. The defaults are exactly the interactive behaviour.
 void net_linger_pump();   // NET-PLAY (net_play.inc): finished matches flush their EXIT
+// Thor RA2: controller focus in the shell menus. The D-pad jumps the controller
+// cursor to the nearest enabled click target in that direction (the targets the
+// scene reports to the --play harness), A clicks it as before.
+void thor_menu_nav(ra2engine::Platform& plat, Scene& scene, int dx, int dy, int cx, int cy) {
+    ra2play::Probe p;
+    scene.play_probe(p);
+    const bool have = cx >= 0;
+    if (!have) { cx = g_ui_w / 2; cy = g_ui_h / 2; }
+    double best = 1e18;
+    int bx = -1, by = -1;
+    for (const auto& kv : p.targets) {
+        const ra2play::Rect& r = kv.second;
+        if (r.w < 8 || r.h < 8) continue;   // slider ticks and other point targets
+        if (kv.first.rfind("button:", 0) == 0) {
+            auto en = p.n.find("button_enabled(" + kv.first.substr(7) + ")");
+            if (en != p.n.end() && en->second == 0) continue;
+        }
+        const int tx = r.x + r.w / 2, ty = r.y + r.h / 2;
+        // Along the pressed direction (> 0) and across it; no cursor yet: the nearest to the centre.
+        const double along = have ? (tx - cx) * dx + (ty - cy) * dy : 1e9;
+        const double across = have ? std::abs((tx - cx) * dy - (ty - cy) * dx) : std::hypot(tx - cx, ty - cy);
+        if (along <= 4) continue;
+        const double score = have ? along + 2.0 * across : across;
+        if (score < best) { best = score; bx = tx; by = ty; }
+    }
+    if (bx >= 0) plat.pad_warp(bx, by);
+}
+
 int run_scene_driver(ra2engine::Platform& plat, ra2engine::TextureCache& tc, Scene* initial,
                      ra2engine::EventSource* src = nullptr, double fixed_dt = 0.0,
                      DriverHooks* hooks = nullptr) {
@@ -6034,6 +6062,9 @@ int run_scene_driver(ra2engine::Platform& plat, ra2engine::TextureCache& tc, Sce
             }
             scene->handle(ev);
         }
+        plat.set_menu_nav(std::strcmp(scene->name(), "game") != 0);   // Thor RA2: D-pad focus in the shell
+        int nav_dx = 0, nav_dy = 0, nav_x = -1, nav_y = -1;
+        if (!src && plat.take_nav(nav_dx, nav_dy, nav_x, nav_y)) thor_menu_nav(plat, *scene, nav_dx, nav_dy, nav_x, nav_y);
         const Uint32 now = SDL_GetTicks();
         const double dt = replay ? replay->dt() : fixed_dt > 0.0 ? fixed_dt : (now - prev) / 1000.0;
         prev = now;

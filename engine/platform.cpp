@@ -34,6 +34,11 @@ struct Platform::Impl {
     uint32_t pad_used_at = 0;
     bool pad_l3 = false;
     std::deque<InputEvent> pad_q;
+    // Thor RA2: in the shell menus the D-pad moves a focus (run_scene_driver
+    // snaps the cursor to the next button) instead of scrolling a map.
+    bool menu_nav = false;
+    int nav_dx = 0, nav_dy = 0, nav_held = 0;   // nav_held: last D-pad direction, for the repeat
+    uint32_t nav_next = 0;
     void pad_open(int index) {
         if (pad || !SDL_IsGameController(index)) return;
         pad = SDL_GameControllerOpen(index);
@@ -80,6 +85,20 @@ struct Platform::Impl {
             pad_pointer(InputEvent::PointerMove, InputEvent::Left, now);
         }
         double rx = stick(pad, SDL_CONTROLLER_AXIS_RIGHTX), ry = stick(pad, SDL_CONTROLLER_AXIS_RIGHTY);
+        if (menu_nav) {
+            const int dx = SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_DPAD_RIGHT) -
+                           SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_DPAD_LEFT);
+            const int dy = SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_DPAD_DOWN) -
+                           SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_DPAD_UP);
+            const int dir = (dx + 1) * 3 + (dy + 1);   // 4 = released
+            if (dir != 4 && (dir != nav_held || now >= nav_next)) {   // press, then repeat while held
+                nav_next = now + (dir != nav_held ? 400 : 160);
+                nav_dx = dx;
+                nav_dy = dy;
+            }
+            nav_held = dir;
+            return;
+        }
         if (SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_DPAD_LEFT)) rx = -1;
         if (SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_DPAD_RIGHT)) rx = 1;
         if (SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_DPAD_UP)) ry = -1;
@@ -527,6 +546,27 @@ bool Platform::poll(InputEvent& ev) {
             break;
     }
     return true;
+}
+
+void Platform::set_menu_nav(bool on) {
+    if (p_) p_->menu_nav = on;
+}
+
+bool Platform::take_nav(int& dx, int& dy, int& x, int& y) {
+    if (!p_ || (p_->nav_dx == 0 && p_->nav_dy == 0)) return false;
+    dx = p_->nav_dx;
+    dy = p_->nav_dy;
+    x = static_cast<int>(p_->pad_x);   // -1 = the cursor never moved
+    y = static_cast<int>(p_->pad_y);
+    p_->nav_dx = p_->nav_dy = 0;
+    return true;
+}
+
+void Platform::pad_warp(int x, int y) {
+    if (!p_) return;
+    p_->pad_x = x;
+    p_->pad_y = y;
+    p_->pad_pointer(InputEvent::PointerMove, InputEvent::Left, SDL_GetTicks());
 }
 
 bool Platform::pad_cursor(int& x, int& y) const {

@@ -30,6 +30,7 @@ enum Command : int {
     kCmdMenu = 5,      // Esc key -> options menu (KeyboardMD.ini Options=27)
     kCmdTab = 6,       // a = tab (0..3)
     kCmdSuper = 7,     // a = SuperweaponType: arm targeting when READY (sidebar SW slot)
+    kCmdGroup = 8,     // a = control group 1..5, b = 1 TeamCreate_a (Ctrl+n) / 0 TeamSelect_a (n; twice = centre)
 };
 
 struct ThorCommand { int type = 0, a = 0, b = 0, c = 0; };
@@ -39,10 +40,11 @@ enum : int {
     kSnapVersion = 1,
     kHdrVersion = 0, kHdrInGame, kHdrCredits, kHdrPowerOut, kHdrPowerDrain, kHdrFlags, kHdrFaction,
     kHdrActiveTab, kHdrTabs, kHdrRadarW, kHdrRadarH, kHdrViewX, kHdrViewY, kHdrViewW, kHdrViewH,
-    kHdrItems, kHdrSupers, kHdrRadarSerial, kHdrGeneration, kHdrReserved,
+    kHdrItems, kHdrSupers, kHdrRadarSerial, kHdrGeneration, kHdrGroups,
     kHeaderInts = 20,
     kItemInts = 7,     // key, cost, state, progress 0..1000, queued count, tab, 0
     kSuperInts = 5,    // key, ready, progress 0..1000, seconds left, 0
+    kGroupInts = 2,    // per control group 1..kHdrGroups, after the supers: members, members selected
 };
 enum : int {
     kFlagRadar = 1 << 0,        // radar online (radar building + power, boot animation done)

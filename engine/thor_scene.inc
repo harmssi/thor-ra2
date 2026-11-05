@@ -65,6 +65,11 @@
                         if (have == t && world_.sw_ready(local_house_, t)) w2_arm_sw(t);
                     break;
                 }
+                case thor::kCmdGroup:   // the KeyboardMD.ini TeamCreate_n / TeamSelect_n handlers
+                    if (c.a < 1 || c.a > 5) break;
+                    if (c.b) input_.group_create(c.a);
+                    else input_.group_select(c.a, SDL_GetTicks());
+                    break;
                 default:
                     break;
             }
@@ -250,5 +255,17 @@
             ++supers;
         }
         s[kHdrSupers] = supers;
+
+        // Control groups 1..5: living own members, how many of them are selected.
+        int grp[10] = {};
+        const auto& us = world_.units();
+        for (std::size_t i = 0; i < us.size(); ++i) {
+            const int g = input_.group_of(static_cast<int>(i));
+            if (g < 1 || g > 5 || !us[i].alive || us[i].die_time >= 0.0 || !world_.controllable(us[i].house)) continue;
+            ++grp[(g - 1) * 2];
+            if (input_.selection().has(static_cast<int>(i))) ++grp[(g - 1) * 2 + 1];
+        }
+        s.insert(s.end(), grp, grp + 10);
+        s[kHdrGroups] = 5;
         thor::publish(s);
     }

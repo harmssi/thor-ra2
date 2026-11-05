@@ -65,6 +65,9 @@ public class ThorDeck extends View {
     private final List<Super> supers = new ArrayList<>();
     private List<Super> hitSupers = new ArrayList<>();
     private final float[] tabScroll = new float[4];
+    private final int[] groupCount = new int[5], groupSel = new int[5];
+    private final RectF groupPanel = new RectF();
+    private final RectF[] groupRect = {new RectF(), new RectF(), new RectF(), new RectF(), new RectF()};
     private String lastAction = "";
     private long lastActionAt;
 
@@ -87,7 +90,7 @@ public class ThorDeck extends View {
     private Super downSuper;
     private boolean downRadar, downGrid, longFired, scrolled;
     private RectF downButton;
-    private int downTab = -1;
+    private int downTab = -1, downGroup = -1;
     private float downY, lastY;
     private long lastRadarCmd;
     private int flashKey = -1;
@@ -100,6 +103,9 @@ public class ThorDeck extends View {
             if (downItem != null && !scrolled) {
                 longFired = true;
                 click(downItem, true); // hold, then cancel
+            } else if (downGroup >= 0) {
+                longFired = true;
+                group(downGroup, true);
             }
         }
     };
@@ -202,6 +208,14 @@ public class ThorDeck extends View {
                 sw.seconds = snap[p + 3];
                 supers.add(sw);
             }
+            for (int g = 0; g < 5; g++) {
+                boolean has = g < snap[B + ThorBridge.H_GROUPS] && p + ThorBridge.GROUP <= n;
+                groupCount[g] = has ? snap[p] : 0;
+                groupSel[g] = has ? snap[p + 1] : 0;
+                if (has) {
+                    p += ThorBridge.GROUP;
+                }
+            }
             if (!wasInGame) {
                 shownCredits = credits;
             }
@@ -285,7 +299,7 @@ public class ThorDeck extends View {
         header.set(0, 0, w, 116 * s);
         float top = header.bottom + 24 * s;
         float leftW = 520 * s;
-        radarPanel.set(m, top, m + leftW, top + 470 * s);
+        radarPanel.set(m, top, m + leftW, top + 400 * s);
         radarArea.set(radarPanel.left + 16 * s, radarPanel.top + 48 * s, radarPanel.right - 16 * s,
                 radarPanel.bottom - 16 * s);
         float by = radarPanel.bottom + 18 * s, bh = 96 * s, gap = 12 * s;
@@ -293,7 +307,13 @@ public class ThorDeck extends View {
         btnRepair.set(m, by, m + bw, by + bh);
         btnSell.set(btnRepair.right + gap, by, btnRepair.right + gap + bw, by + bh);
         btnMenu.set(btnSell.right + gap, by, m + leftW, by + bh);
-        superPanel.set(m, btnRepair.bottom + 18 * s, m + leftW, h - m);
+        groupPanel.set(m, btnRepair.bottom + 18 * s, m + leftW, btnRepair.bottom + 146 * s);
+        float gw = (leftW - 24 * s - 4 * 8 * s) / 5f;
+        for (int i = 0; i < 5; i++) {
+            float l = m + 12 * s + i * (gw + 8 * s);
+            groupRect[i].set(l, groupPanel.top + 44 * s, l + gw, groupPanel.bottom - 12 * s);
+        }
+        superPanel.set(m, groupPanel.bottom + 18 * s, m + leftW, h - m);
 
         float colX = radarPanel.right + 24 * s, colR = w - m;
         float tgap = 10 * s, tw = (colR - colX - 3 * tgap) / 4f;
@@ -334,6 +354,7 @@ public class ThorDeck extends View {
         drawButton(c, btnRepair, str(R.string.deck_repair), rep, glyphWrench());
         drawButton(c, btnSell, str(R.string.deck_sell), sell, glyphDollar());
         drawButton(c, btnMenu, str(R.string.deck_menu), (flags & ThorBridge.F_PAUSED) != 0, glyphMenu());
+        drawGroups(c);
         drawSupers(c);
         for (int i = 0; i < 4; i++) {
             drawTab(c, i);
@@ -811,6 +832,40 @@ public class ThorDeck extends View {
         c.drawText(text, b.left + 9 * s, b.bottom - 8 * s, badgeText);
     }
 
+    /** Control groups 1-5: number, living members; accent when the whole group is selected. */
+    private void drawGroups(Canvas c) {
+        int acc = Ui.accent(faction);
+        Ui.panel(c, groupPanel, Ui.RADIUS * s, Ui.PANEL, Ui.LINE, paint);
+        c.drawText(str(R.string.deck_groups), groupPanel.left + 16 * s, groupPanel.top + 30 * s, microLabel);
+        String hint = str(R.string.deck_groups_hint);
+        c.drawText(hint, groupPanel.right - 16 * s - microLabelDim.measureText(hint), groupPanel.top + 30 * s,
+                microLabelDim);
+        for (int i = 0; i < 5; i++) {
+            RectF r = groupRect[i];
+            int cnt = groupCount[i];
+            boolean sel = cnt > 0 && groupSel[i] == cnt;
+            boolean flash = flashButton == r;
+            Ui.panel(c, r, Ui.RADIUS_SM * s, sel ? Ui.alpha(acc, 0.16f) : flash ? Ui.PANEL_2 : Ui.BG_2,
+                    sel || flash ? acc : Ui.LINE, paint);
+            Paint np = Ui.text(Ui.monoBold(), 30 * s, cnt == 0 ? Ui.TEXT_3 : sel ? acc : Ui.TEXT);
+            c.drawText(String.valueOf(i + 1), r.left + 12 * s, r.centerY() + 11 * s, np);
+            String cs = cnt == 0 ? "–" : "×" + cnt;
+            monoSmall.setColor(cnt == 0 ? Ui.TEXT_3 : Ui.TEXT_2);
+            c.drawText(cs, r.right - 10 * s - monoSmall.measureText(cs), r.centerY() + 8 * s, monoSmall);
+            monoSmall.setColor(Ui.TEXT_2);
+        }
+    }
+
+    private void group(int g, boolean save) {
+        ThorBridge.push(ThorBridge.CMD_GROUP, g + 1, save ? 1 : 0, 0);
+        lastAction = save ? getContext().getString(R.string.deck_act_group_set, g + 1)
+                : getContext().getString(R.string.deck_act_group, g + 1);
+        lastActionAt = SystemClock.uptimeMillis();
+        flashButton = groupRect[g];
+        flashAt = SystemClock.uptimeMillis();
+        invalidate();
+    }
+
     private void drawSupers(Canvas c) {
         int acc = Ui.accent(faction);
         Ui.panel(c, superPanel, Ui.RADIUS * s, Ui.PANEL, Ui.LINE, paint);
@@ -974,6 +1029,7 @@ public class ThorDeck extends View {
                 downSuper = null;
                 downButton = null;
                 downTab = -1;
+                downGroup = -1;
                 downGrid = gridPanel.contains(x, y);
                 downRadar = radarArea.contains(x, y);
                 if (downRadar) {
@@ -985,6 +1041,13 @@ public class ThorDeck extends View {
                     downButton = btnSell;
                 } else if (btnMenu.contains(x, y)) {
                     downButton = btnMenu;
+                } else if (groupPanel.contains(x, y)) {
+                    for (int i = 0; i < 5; i++) {
+                        if (groupRect[i].contains(x, y)) {
+                            downGroup = i;
+                            handler.postDelayed(longPress, 450);
+                        }
+                    }
                 } else {
                     for (int i = 0; i < 4; i++) {
                         if (tabRect[i].contains(x, y)) {
@@ -1039,6 +1102,8 @@ public class ThorDeck extends View {
                         ThorBridge.push(ThorBridge.CMD_MENU, 0, 0, 0);
                     }
                     invalidate();
+                } else if (downGroup >= 0 && !longFired && groupRect[downGroup].contains(x, y)) {
+                    group(downGroup, false);
                 } else if (downTab >= 0 && tabRect[downTab].contains(x, y)) {
                     if ((tabs & (1 << downTab)) != 0) {
                         ThorBridge.push(ThorBridge.CMD_TAB, downTab, 0, 0);
@@ -1061,6 +1126,7 @@ public class ThorDeck extends View {
                 downRadar = false;
                 downButton = null;
                 downTab = -1;
+                downGroup = -1;
                 downGrid = false;
                 return true;
             case MotionEvent.ACTION_CANCEL:
@@ -1070,6 +1136,7 @@ public class ThorDeck extends View {
                 downRadar = false;
                 downButton = null;
                 downTab = -1;
+                downGroup = -1;
                 downGrid = false;
                 return true;
             default:

@@ -55,4 +55,8 @@
     <string name="sw_spyplane">Spionageflugzeug</string>
     <string name="sw_genetic">Genetischer Mutator</string>
     <string name="sw_shield">Kraftschild</string>
+    <string name="deck_groups">GRUPPEN</string>
+    <string name="deck_groups_hint">HALTEN = SPEICHERN</string>
+    <string name="deck_act_group">Gruppe %1$d ausgewählt</string>
+    <string name="deck_act_group_set">Gruppe %1$d gespeichert</string>
 </resources>
