@@ -6,6 +6,8 @@
 
 ▶ **[Watch the install guide](https://youtu.be/hMupGiEim60)** (3 min) · **[Showcase video](https://youtu.be/DOWgL-C954M)**
 
+Made a video about this? [Open an issue](../../issues/new) and I'll link it here.
+
 ## Quick start
 
 1. **Install the APK.** Download `ThorRA2-v0.2.0.apk` from [Releases](../../releases) on the Thor. In Chrome tap **Download anyway**, open the file, the **Package installer** asks for permission: **Settings → Allow from this source**, go back (you land in the download list) and **tap the APK again**, then **Install**.
