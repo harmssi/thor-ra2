@@ -92,8 +92,7 @@ stecken in denselben Commits, deshalb hätten Cherry-Picks mehr Konflikte erzeug
 
 **Android-APK:**
 - Gebaut auf harmssi-os (Docker `thor-build`, Release-Keystore).
-- Datei: `dist/ThorRA2-0.3.0-beta1.apk`. Das zuletzt gebaute APK enthält noch nicht die Superwaffen-Namen auf dem Deck.
-  Das kommt mit dem nächsten Build zusammen mit dem Launcher.
+- Datei: `dist/ThorRA2-0.3.0-beta1.apk` (mit Launcher, SHA-256 a06ea9ba…), auf dem Thor installiert.
 - `dist/ThorRA2.apk` ist wieder v0.2.1.
 
 ## Auf dem Thor geprüft (06.11., Skirmish Alamo, Yuri gegen Yuri-KI)
@@ -130,7 +129,7 @@ getestet; es läuft über dieselbe `Input::pan`-Klemmung wie das Ziehen.
 - **Was „Red Alert 2“ ist:** Die Yuri-Fraktion ist in der Gefechts-Lobby ausgeblendet. Die Allied/Soviet-Kampagnen
   stehen wie bisher unter Single Player vorn.
 - **Was es NICHT ist:** kein echtes Red Alert 2. Die Engine spielt in beiden Modi die Yuri's-Revenge-Regeln
-  (`rulesmd.ini`, YR-Einheiten wie der Boris-Ersatz, YR-Balance; siehe docs/gap/REMAINING.md, U-1).
+  (`rulesmd.ini`, YR-Balance; siehe docs/gap/REMAINING.md, U-1).
   YR-Gebäude, die alle Seiten bauen dürfen, bleiben ebenfalls.
 - Screenshots: `~/Desktop/thor-ra2-launcher/launcher_*`, `lobby_modus_ra2_ohne_yuri.png`, `deck_alliierte_blau.png`,
   `deck_sowjets_rot.png`, `deck_yuri_violett.png`.
