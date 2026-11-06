@@ -343,7 +343,7 @@ public class ThorDeck extends View {
     protected void onDraw(Canvas c) {
         super.onDraw(c);
         int w = getWidth(), h = getHeight();
-        Ui.grid(c, w, h, 40 * s, paint);
+        Ui.grid(c, w, h, Ui.GRID * s, paint);
         if (!inGame) {
             drawIdle(c, w, h);
             Ui.scanlines(c, w, h, paint);
@@ -375,42 +375,9 @@ public class ThorDeck extends View {
         }
     }
 
-    /** Own emblem: a hexagon frame with a stacked chevron (no game artwork). */
-    private void emblem(Canvas c, float cx, float cy, float r, int color) {
-        Path hex = new Path();
-        for (int i = 0; i < 6; i++) {
-            double a = Math.toRadians(60 * i - 90);
-            float x = cx + (float) Math.cos(a) * r, y = cy + (float) Math.sin(a) * r;
-            if (i == 0) {
-                hex.moveTo(x, y);
-            } else {
-                hex.lineTo(x, y);
-            }
-        }
-        hex.close();
-        paint.setStyle(Paint.Style.STROKE);
-        paint.setStrokeWidth(3 * s);
-        paint.setColor(Ui.alpha(color, 0.55f));
-        c.drawPath(hex, paint);
-        paint.setStyle(Paint.Style.FILL);
-        for (int k = 0; k < 2; k++) {
-            float oy = cy - r * 0.22f + k * r * 0.42f;
-            Path ch = new Path();
-            ch.moveTo(cx - r * 0.55f, oy);
-            ch.lineTo(cx, oy + r * 0.34f);
-            ch.lineTo(cx + r * 0.55f, oy);
-            ch.lineTo(cx + r * 0.55f, oy + r * 0.17f);
-            ch.lineTo(cx, oy + r * 0.51f);
-            ch.lineTo(cx - r * 0.55f, oy + r * 0.17f);
-            ch.close();
-            paint.setColor(k == 0 ? color : Ui.alpha(color, 0.55f));
-            c.drawPath(ch, paint);
-        }
-    }
-
     private void drawIdle(Canvas c, int w, int h) {
         float cx = w / 2f, cy = h / 2f - 40 * s;
-        emblem(c, cx, cy - 60 * s, 90 * s, Ui.AMBER);
+        Ui.emblem(c, cx, cy - 60 * s, 90 * s, Ui.AMBER, s, paint);
         Paint t = Ui.text(Ui.interBold(), 44 * s, Ui.TEXT);
         t.setLetterSpacing(0.12f);
         String title = "THOR RA2";
@@ -460,7 +427,8 @@ public class ThorDeck extends View {
         c.drawText(low ? str(R.string.deck_low_power) : str(R.string.deck_output_drain), px, 104 * s, lowLabel);
 
         // side + mode chip
-        String side = faction == 1 ? str(R.string.deck_side_soviet) : str(R.string.deck_side_allies);
+        String side = faction == 2 ? str(R.string.deck_side_yuri)
+                : faction == 1 ? str(R.string.deck_side_soviet) : str(R.string.deck_side_allies);
         String mode;
         boolean modal = true;
         if ((flags & ThorBridge.F_PLACING) != 0) {

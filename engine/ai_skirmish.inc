@@ -59,6 +59,14 @@ UnitRoster load_ai_skirmish_roster(const std::string& dir, const ra2assets::MixF
         // no [AI] Build* list names, so a skirmish AI fields it only once it
         // owns a Robot Control Center by other means, as in the original).
         {"ROBO", true, "GAWEAP"}, {"BFRT", true, "GAWEAP"}, {"SCHP", true, "NAWEAP"},
+        // Thor RA2: a Yuri AI house (rules Owner=YuriCountry keeps them off the
+        // other sides). Appended, so every older roster index is unchanged.
+        {"INIT", false, "YABRCK"}, {"YURI", false, "YABRCK"}, {"BRUTE", false, "YABRCK"},
+        {"VIRUS", false, "YABRCK"}, {"YURIPR", false, "YABRCK"},
+        {"LTNK", true, "YAWEAP"}, {"YTNK", true, "YAWEAP"}, {"CAOS", true, "YAWEAP"},
+        {"TELE", true, "YAWEAP"}, {"MIND", true, "YAWEAP"}, {"DISK", true, "YAWEAP"},
+        {"SMIN", true, "YAWEAP"}, {"PCV", true, "YAWEAP"},
+        {"YHVR", true, "YAYARD"}, {"BSUB", true, "YAYARD"},
     };
     UnitRoster ur = load_unit_roster_table(dir, ra2, ua, rules, art, kAiUnits,
                                            sizeof(kAiUnits) / sizeof(kAiUnits[0]), /*full_parse=*/true);
@@ -141,7 +149,8 @@ ra2engine::AiHouseConfig make_ai_slot_config(const ra2engine::SkirmishSlot& s, d
     acfg.catalog.naval_yard_adjacency =
         static_cast<int>(rules.general_double("AINavalYardAdjacency", 20.0));
     acfg.team.nav_factory_types = factory_types_for(ba, id_of(acfg.catalog.naval_yard));
-    acfg.team.trigger_side = s.side == ra2engine::World::Side::Soviet ? 2 : 1;  // [ai-trigger.md §5]
+    acfg.team.trigger_side = s.side == ra2engine::World::Side::Yuri     ? 3
+                           : s.side == ra2engine::World::Side::Soviet ? 2 : 1;  // [ai-trigger.md §5]
     acfg.team.house_name = country;
     fill_ai_building_maps(acfg.team, ba, rules, rules_ini);
     // W7-04-18 [RE: TechnoTypeClass ToProtect=, read by ReceiveDamage
@@ -188,7 +197,8 @@ ra2engine::AiHouseConfig make_ai_slot_config(const ra2engine::SkirmishSlot& s, d
         const int c = ra2engine::difficulty_class_index(s.diff);
         acfg.virtual_purifiers = c < (int)v.size() ? std::max(0, std::atoi(v[(std::size_t)c].c_str())) : 0;
     }
-    std::cerr << "[ai] slot side=" << (s.side == ra2engine::World::Side::Soviet ? "Soviet" : "Allied")
+    std::cerr << "[ai] slot side=" << (s.side == ra2engine::World::Side::Yuri     ? "Yuri"
+                                       : s.side == ra2engine::World::Side::Soviet ? "Soviet" : "Allied")
               << " country=" << country << " diff=" << (int)s.diff
               << " roster=" << acfg.team.unit_roster.size()
               << " teams=" << acfg.team.aimd.teams.size()

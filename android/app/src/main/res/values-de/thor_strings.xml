@@ -30,6 +30,7 @@
     <string name="deck_mode_paused">PAUSE</string>
     <string name="deck_side_allies">ALLIIERTE</string>
     <string name="deck_side_soviet">SOWJETS</string>
+    <string name="deck_side_yuri">YURI</string>
     <string name="deck_h_place">Gebäude platzieren</string>
     <string name="deck_d_place">Oben auf die Karte tippen. Dort lange drücken bricht ab.</string>
     <string name="deck_h_target">Ziel wählen</string>
@@ -59,4 +60,54 @@
     <string name="deck_groups_hint">HALTEN = SPEICHERN</string>
     <string name="deck_act_group">Gruppe %1$d ausgewählt</string>
     <string name="deck_act_group_set">Gruppe %1$d gespeichert</string>
+    <!-- Thor launcher -->
+    <string name="l_eyebrow">SPIEL WÄHLEN</string>
+    <string name="l_subtitle">Dual-Screen Command Deck</string>
+    <string name="l_ra2_title">Red Alert 2</string>
+    <string name="l_ra2_text">Alliierte und Sowjets · Kampagnen · Gefecht</string>
+    <string name="l_ra2_short">Alliierte gegen Sowjets. Yuri bleibt aus der Gefechts-Lobby draußen.</string>
+    <string name="l_yr_title">Yuri\'s Revenge</string>
+    <string name="l_yr_text">Mit Yuri-Fraktion · Gefecht gegen Mensch oder KI</string>
+    <string name="l_yr_short">Drei Seiten: Alliierte, Sowjets und Yuri. Yuri ist im Gefecht spielbar.</string>
+    <string name="l_import">SPIELDATEIEN</string>
+    <string name="l_zoom">ZOOM</string>
+    <string name="l_language">SPRACHE</string>
+    <string name="l_info">INFO</string>
+    <string name="l_ready">Spieldateien bereit</string>
+    <string name="l_missing">Spieldateien fehlen: %d</string>
+    <string name="l_missing_tile">Erst die Spieldateien importieren</string>
+    <string name="l_hint">A Start · Steuerkreuz / Stick wählen · B Beenden</string>
+    <string name="l_mode">MODUS</string>
+    <string name="l_version">VERSION</string>
+    <string name="l_info_title">Thor RA2</string>
+    <string name="l_info_text">Red Alert 2 / Yuri\'s Revenge für den AYN Thor.\nRA2 Engine von Omar El Arab, Yuri-Fraktion von Bryle13 (RA2AndroidPort), Thor-Port von harmssi. Alles 0BSD.\nKeine Spieldaten enthalten; nutzt deine eigenen Dateien.</string>
+    <string name="l_github">GitHub</string>
+    <string name="l_youtube">Video</string>
+    <string name="l_close">Schließen</string>
+    <string name="l_rules_note">Die Engine spielt in beiden Modi die Yuri\'s-Revenge-Regeln.</string>
+    <!-- Game files screen -->
+    <string name="files_eyebrow">Thor RA2 · Spieldateien</string>
+    <string name="files_title">Spieldateien</string>
+    <string name="files_sub">Dateien aus deiner eigenen Red Alert 2 / Yuri\'s Revenge importieren, prüfen oder ersetzen.</string>
+    <string name="files_checking">Spieldateien werden geprüft …</string>
+    <string name="files_importing">Spieldateien werden importiert …</string>
+    <string name="files_ready">Bereit: alle nötigen Dateien sind da</string>
+    <string name="files_missing">Einrichtung nötig: %d Pflichtdateien fehlen</string>
+    <string name="files_continue">Weiter zum Start</string>
+    <string name="files_library">Deine Spieldateien</string>
+    <string name="files_import">Spieldateien importieren oder ersetzen</string>
+    <string name="files_details_show">Dateidetails zeigen</string>
+    <string name="files_details_hide">Dateidetails ausblenden</string>
+    <string name="files_support">Hilfe</string>
+    <string name="files_menu_style">Hauptmenü im Spiel</string>
+    <string name="files_menu_original">Original Yuri\'s Revenge</string>
+    <string name="files_menu_command">Command Center (experimentell)</string>
+    <string name="files_close">Schließen</string>
+    <string name="files_back">Zurück</string>
+    <string name="files_report">Spielbericht teilen</string>
+    <string name="files_refresh">Dateien neu prüfen</string>
+    <string name="files_terms">Bedingungen &amp; Spieldateien</string>
+    <string name="files_credits">Mitwirkende &amp; Lizenzen</string>
+    <string name="files_footer">RA2 Engine von Omar El Arab · Yuri-Fraktion von Bryle13 (RA2AndroidPort) · Thor-Port von harmssi. Keine Verbindung zu EA.</string>
+    <string name="files_after_crash">Nach einem Absturz erst „Spielbericht teilen“ antippen, dann neu starten.</string>
 </resources>

@@ -6,6 +6,12 @@ by Omar El Arab, licensed under the Zero-Clause BSD licence (see LICENSE).
 Thor RA2's own changes (the command deck, the Android shell, the build
 scripts) are released under the same 0BSD licence.
 
+The Yuri faction and further engine work come from RA2AndroidPort
+(https://github.com/shietgrupe-cpu13/RA2AndroidPort, branch android-touch)
+by Bryle13 (shietgrupe-cpu13), also under the Zero-Clause BSD licence
+(every merged commit after upstream a8cfdcc carries the 0BSD LICENSE).
+See CREDITS.md.
+
 Third-party components keep their own licences; they are listed with their
 licence texts in THIRD_PARTY_NOTICES.md:
 

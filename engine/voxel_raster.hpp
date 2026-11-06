@@ -43,7 +43,7 @@ double index_to_yaw(int i, int n);
 VoxelSprite rasterize_model(const ra2assets::VxlModel& m, const ra2assets::HvaModel& hva,
                             double yaw_rad, const ra2assets::Vpl& vpl,
                             const ra2assets::Palette& pal, int hva_frame = 0,   // W3-B HVA frame
-                            double pitch_rad = 0.0);   // W4: nose-up pitch (rockets / voxel bullets)
+                            double pitch_rad = 0.0, int ramp = 0);   // pitch before yaw; terrain after yaw
 
 // W2-GA-12 [RE: voxel-render.md fn table, FUN_00755680 -- the VoxLib shadow
 // renderer plots every projected column in colour 1 (shadow) at GROUND
@@ -52,6 +52,6 @@ VoxelSprite rasterize_model(const ra2assets::VxlModel& m, const ra2assets::HvaMo
 // of the same yaw. [RE-FALLBACK: RE-Q9 open -- no light-direction offset;
 // 50 % Darken like the SHP shadows.]
 VoxelSprite rasterize_shadow(const ra2assets::VxlModel& m, const ra2assets::HvaModel& hva,
-                             double yaw_rad, int alpha);
+                             double yaw_rad, int alpha, int ramp = 0);
 
 }  // namespace ra2engine

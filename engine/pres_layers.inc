@@ -37,12 +37,16 @@ inline bool pres_on_high_deck(const ra2engine::World& w, const ra2engine::Unit& 
 
 // The unit's ground-layer sort key.
 inline double pres_unit_key(const ra2engine::World& w, const ra2engine::Unit& u) {
-    return u.fx + u.fy + (pres_on_high_deck(w, u) ? kPresOnDeckBias : 0.0);
+    return ra2engine::deck_unit_depth(u.fx,u.fy,u.cell_x,u.cell_y,pres_on_high_deck(w,u));
 }
 
 // Levels the draw position is raised by (bridge deck).
 inline int pres_unit_lift_levels(const ra2engine::World& w, const ra2engine::Unit& u) {
     return pres_on_high_deck(w, u) ? kPresBridgeLevels : 0;
+}
+
+inline double pres_ground_level(const ra2engine::World& w,const ra2engine::Unit& u) {
+    return ra2engine::moving_ground_level(w,u);
 }
 
 // w8fix-layer W8-02-03 [RE: an OnBridge object's Z includes BridgeHeight
@@ -116,6 +120,8 @@ inline int pres_jumpjet_wobble_px(int idx, const ra2engine::Unit& u) {
     if (!g_walk_rules || !u.is_aircraft || u.an.t.fixed_wing || u.altitude <= 0.0 || u.an.crashing) return 0;
     struct Wob { double per_sec = 0.15; double dev = 40.0; bool off = false; };
     static std::map<std::string, Wob> cache;
+    static std::uint64_t cache_epoch=0;
+    if(cache_epoch!=g_pres_epoch) { cache.clear();cache_epoch=g_pres_epoch; }
     // W7-05-08: the keys live in the RULES id's section ([JUMPJET], not [ROCK]).
     auto it = cache.find(pres_type_id(u));
     if (it == cache.end()) {
@@ -147,4 +153,26 @@ inline int pres_cell_ramp(const Assets& a, int x, int y) {
     if (!tmp || mc->subtile >= tmp->count()) return 0;
     const uint8_t* h = tmp->image_header(mc->subtile);
     return h ? h[42] : 0;
+}
+inline int pres_unit_ramp(const ra2engine::Unit& u) {
+    if(!g_pres_assets || !u.is_vehicle || u.is_aircraft || u.is_naval || u.on_deck || u.altitude>0 || u.an.t.missile)
+        return 0;
+    const auto kind=ra2engine::unit_loco_kind(u);
+    if(kind!=ra2engine::LocoKind::Drive && kind!=ra2engine::LocoKind::Teleport) return 0;
+    int ramp=pres_cell_ramp(*g_pres_assets,u.cell_x,u.cell_y);
+    if(u.moving() && u.path.size()>1) {
+        const auto first=std::max<std::size_t>(1,std::min(u.path_idx,u.path.size()-1));
+        double best=0.75*0.75;
+        for(std::size_t k=first;k<u.path.size() && k<=first+1;++k) {
+            const auto a=u.path[k-1],b=u.path[k];
+            const double dx=b.x-a.x,dy=b.y-a.y,len=dx*dx+dy*dy;
+            if(len<=0 || std::abs(dx)>1 || std::abs(dy)>1)continue;
+            const double f=std::clamp(((u.fx-a.x)*dx+(u.fy-a.y)*dy)/len,0.0,1.0);
+            const double ex=u.fx-a.x-f*dx,ey=u.fy-a.y-f*dy,d=ex*ex+ey*ey;
+            if(d>best)continue;
+            best=d;ramp=ra2engine::terrain_tilt_transition(pres_cell_ramp(*g_pres_assets,a.x,a.y),
+                                                       pres_cell_ramp(*g_pres_assets,b.x,b.y),f);
+        }
+    }
+    return ramp;
 }

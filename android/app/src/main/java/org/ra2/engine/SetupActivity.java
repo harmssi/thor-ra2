@@ -5,6 +5,8 @@ import android.content.ContentResolver;
 import android.content.Intent;
 import android.database.Cursor;
 import android.graphics.Color;
+import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -18,6 +20,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.LinearLayout;
+import android.widget.FrameLayout;
 import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -82,17 +85,23 @@ public class SetupActivity extends Activity {
         return null;
     }
 
-    private TextView status, title;
+    private TextView status, title, readiness;
     private ProgressBar progress;
-    private Button importButton, startButton, exitButton;
+    private Button importButton, startButton, exitButton, detailsButton;
     private final Handler ui = new Handler(Looper.getMainLooper());
     private volatile boolean copying = false;
+    // Thor RA2: the colours, fonts and radii come from the deck's design tokens (Ui, docs/THOR-DESIGN.md).
+    private static final int BG = de.harmssi.thorra2.Ui.BG, PANEL = de.harmssi.thorra2.Ui.PANEL,
+            PANEL_2 = de.harmssi.thorra2.Ui.PANEL_2, LINE = de.harmssi.thorra2.Ui.LINE,
+            TEXT = de.harmssi.thorra2.Ui.TEXT, TEXT_2 = de.harmssi.thorra2.Ui.TEXT_2,
+            TEXT_3 = de.harmssi.thorra2.Ui.TEXT_3, AMBER = de.harmssi.thorra2.Ui.AMBER,
+            GREEN = de.harmssi.thorra2.Ui.GREEN, CORAL = de.harmssi.thorra2.Ui.CORAL;
     // R-161: the copy thread is owned by the activity; leaving (finish /
     // destroy) cancels it, and its partial file is deleted.
     private Thread importThread;
     private volatile boolean cancelImport = false;
 
-    static File dataDir(Activity a) {
+    public static File dataDir(Activity a) {
         File ext = a.getExternalFilesDir(null);
         File d = new File(ext != null ? ext : a.getFilesDir(), "ra2");
         //noinspection ResultOfMethodCallIgnored
@@ -100,7 +109,7 @@ public class SetupActivity extends Activity {
         return d;
     }
 
-    static List<String> missing(File dir, boolean requiredOnly) {
+    public static List<String> missing(File dir, boolean requiredOnly) {
         List<String> m = new ArrayList<>();
         for (int i = 0; i < (requiredOnly ? REQUIRED : FILES.length); ++i) {
             File f = new File(dir, FILES[i]);
@@ -127,14 +136,10 @@ public class SetupActivity extends Activity {
         super.onCreate(state);
         File dir = dataDir(this);
         cleanParts(dir);
-        Intent in = getIntent();
-        boolean forceImport = in != null && (in.getBooleanExtra(EXTRA_IMPORT, false) || ACTION_IMPORT.equals(in.getAction()));
-        if (!forceImport && missing(dir, true).isEmpty()) {
-            startGame();
-            return;
-        }
+        // Keep the launcher reachable after a crash so reports can be shared.
         buildUi();
         refresh();
+        if (!LegalNotice.accepted(this)) LegalNotice.show(this,this::refresh);
     }
 
     private int dp(int v) {
@@ -145,49 +150,139 @@ public class SetupActivity extends Activity {
         Button b = new Button(this);
         b.setText(label);
         b.setMinHeight(dp(56));   // >= 48 dp touch target
+        b.setTextColor(TEXT);
+        b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        b.setTypeface(de.harmssi.thorra2.Ui.interMedium());
+        b.setAllCaps(false);
+        b.setBackgroundTintList(null);
+        b.setBackground(focusable(PANEL, LINE, AMBER));
         b.setOnClickListener(l);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-        lp.setMargins(dp(6), dp(6), dp(6), dp(6));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.setMargins(0, dp(6), 0, dp(6));
+        b.setPadding(dp(18),dp(12),dp(18),dp(12));
         b.setLayoutParams(lp);
         return b;
     }
 
+    /** Panel with the controller focus ring of the launcher (accent line when focused). */
+    private android.graphics.drawable.StateListDrawable focusable(int fill, int edge, int accent) {
+        android.graphics.drawable.StateListDrawable d = new android.graphics.drawable.StateListDrawable();
+        GradientDrawable f = panel(PANEL_2, accent);
+        f.setStroke(dp(2), accent);
+        d.addState(new int[]{android.R.attr.state_focused}, f);
+        d.addState(new int[]{android.R.attr.state_pressed}, panel(PANEL_2, accent));
+        d.addState(new int[]{}, panel(fill, edge));
+        return d;
+    }
+
+    private GradientDrawable panel(int fill, int edge) {
+        GradientDrawable d = new GradientDrawable();
+        d.setColor(fill);
+        d.setCornerRadius(dp(12));
+        d.setStroke(dp(1), edge);
+        return d;
+    }
+
+    private TextView label(String text, int size, int color) {
+        TextView t = new TextView(this);
+        t.setText(text);
+        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, size);
+        t.setTextColor(color);
+        t.setTypeface(de.harmssi.thorra2.Ui.inter());
+        t.setPadding(dp(8), dp(6), dp(8), dp(6));
+        return t;
+    }
+
+    private TextView micro(int res) {
+        TextView t = label(getString(res).toUpperCase(Locale.ROOT), 12, TEXT_3);
+        t.setTypeface(de.harmssi.thorra2.Ui.interSemi());
+        t.setLetterSpacing(0.32f);
+        t.setPadding(dp(8), dp(18), dp(8), dp(6));
+        return t;
+    }
+
     private void buildUi() {
+        de.harmssi.thorra2.Ui.init(this);
+        // Two columns on the Thor's wide top screen: the files on the left, support on the right.
+        LinearLayout cols = new LinearLayout(this);
+        cols.setOrientation(LinearLayout.HORIZONTAL);
+        cols.setPadding(dp(28), dp(24), dp(28), dp(24));
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(Color.BLACK);
-        root.setPadding(dp(24), dp(16), dp(24), dp(16));
+        LinearLayout side = new LinearLayout(this);
+        side.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams lw = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.4f);
+        lw.setMargins(0, 0, dp(28), 0);
+        cols.addView(root, lw);
+        cols.addView(side, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        ScrollView page = new ScrollView(this);
+        page.setFillViewport(true);
+        page.setBackgroundColor(BG);
+        page.addView(cols);
 
-        title = new TextView(this);
-        title.setText(R.string.setup_title);
-        title.setTextColor(Color.rgb(255, 200, 90));
-        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22);
+        TextView eyebrow = micro(R.string.files_eyebrow);
+        eyebrow.setPadding(dp(8), 0, dp(8), dp(2));
+        root.addView(eyebrow);
+        title = label(getString(R.string.files_title), 34, TEXT);
+        title.setTypeface(de.harmssi.thorra2.Ui.interBold());
         root.addView(title);
+        root.addView(label(getString(R.string.files_sub), 15, TEXT_2));
 
-        ScrollView scroll = new ScrollView(this);
-        status = new TextView(this);
-        status.setTextColor(Color.rgb(220, 220, 220));
-        status.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
-        status.setPadding(0, dp(8), 0, dp(8));
-        scroll.addView(status);
-        root.addView(scroll, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        readiness = label(getString(R.string.files_checking), 15, GREEN);
+        readiness.setTypeface(de.harmssi.thorra2.Ui.interSemi());
+        readiness.setBackground(panel(PANEL, LINE));
+        readiness.setPadding(dp(16), dp(12), dp(16), dp(12));
+        LinearLayout.LayoutParams rs = new LinearLayout.LayoutParams(-1, -2);
+        rs.setMargins(0, dp(14), 0, dp(6));
+        root.addView(readiness, rs);
+
+        startButton = button(getString(R.string.files_continue), v -> startGame());
+        startButton.setMinHeight(dp(64));
+        startButton.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17);
+        startButton.setTypeface(de.harmssi.thorra2.Ui.interBold());
+        startButton.setTextColor(AMBER);
+        startButton.setBackground(focusable(PANEL, de.harmssi.thorra2.Ui.alpha(AMBER, 0.55f), AMBER));
+        root.addView(startButton);
+        root.addView(micro(R.string.files_library));
+        importButton = button(getString(R.string.files_import), v -> pickFolder());
+        root.addView(importButton);
+        status = label("", 13, TEXT_2);
+        status.setPadding(dp(16), dp(12), dp(16), dp(12));
+        status.setBackground(panel(PANEL, LINE));
+        status.setVisibility(View.GONE);
+        detailsButton = button(getString(R.string.files_details_show), v -> {
+            boolean open = status.getVisibility() != View.VISIBLE;
+            status.setVisibility(open ? View.VISIBLE : View.GONE);
+            ((Button) v).setText(getString(open ? R.string.files_details_hide : R.string.files_details_show));
+        });
+        root.addView(detailsButton);
+        root.addView(status);
 
         progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         progress.setMax(1000);
+        progress.setProgressTintList(android.content.res.ColorStateList.valueOf(AMBER));
         progress.setVisibility(View.GONE);
         root.addView(progress);
 
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(Gravity.CENTER);
-        importButton = button(getString(R.string.setup_import), v -> pickFolder());
-        startButton = button(getString(R.string.setup_start), v -> startGame());
-        exitButton = button(getString(R.string.setup_exit), v -> finish());
-        row.addView(importButton);
-        row.addView(startButton);
-        row.addView(exitButton);
-        root.addView(row);
-        setContentView(root);
+        side.addView(micro(R.string.files_support));
+        side.addView(button(getString(R.string.files_menu_style), v -> {
+            if (copying) return;
+            new android.app.AlertDialog.Builder(this).setTitle(R.string.files_menu_style)
+                .setSingleChoiceItems(new String[]{getString(R.string.files_menu_original), getString(R.string.files_menu_command)},
+                    getSharedPreferences("interface", MODE_PRIVATE).getBoolean("command_menu", false) ? 1 : 0,
+                    (dialog, which) -> {getSharedPreferences("interface", MODE_PRIVATE).edit()
+                        .putBoolean("command_menu", which == 1).apply(); dialog.dismiss();})
+                .setNegativeButton(R.string.files_close, null).show();
+        }));
+        exitButton = button(getString(R.string.files_back), v -> finish());
+        side.addView(button(getString(R.string.files_report), v -> Diagnostics.share(this)));
+        side.addView(button(getString(R.string.files_refresh), v -> { if (!copying) refresh(); }));
+        side.addView(button(getString(R.string.files_terms), v -> LegalNotice.show(this, this::refresh)));
+        side.addView(button(getString(R.string.files_credits), v -> LegalNotice.credits(this)));
+        side.addView(exitButton);
+        side.addView(label(getString(R.string.files_footer), 12, TEXT_3));
+        setContentView(page);
+        startButton.requestFocus();
     }
 
     private void refresh() {
@@ -196,9 +291,12 @@ public class SetupActivity extends Activity {
         List<String> all = missing(dir, false);
         StringBuilder sb = new StringBuilder();
         sb.append(getString(R.string.setup_intro)).append("\n\n");
+        sb.append(getString(R.string.files_after_crash)).append("\n\n");
         sb.append(getString(R.string.setup_folder)).append("\n  ").append(dir.getAbsolutePath()).append("\n\n");
         // W6-06-05: opened to add / replace files with everything present.
-        title.setText(req.isEmpty() ? R.string.setup_title_ready : R.string.setup_title);
+        readiness.setText(copying ? getString(R.string.files_importing) :
+                (req.isEmpty() ? getString(R.string.files_ready) : getString(R.string.files_missing, req.size())));
+        readiness.setTextColor(req.isEmpty() && !copying ? GREEN : CORAL);
         if (req.isEmpty()) {
             sb.append(getString(R.string.setup_ready)).append("\n");
         } else {
@@ -214,7 +312,10 @@ public class SetupActivity extends Activity {
         sb.append("\n").append(getString(R.string.setup_how));
         sb.append("\n\n").append(getString(R.string.setup_reimport_note));   // W6-06-05
         status.setText(sb.toString());
+        if (!req.isEmpty() || copying) status.setVisibility(View.VISIBLE);
+        detailsButton.setText(getString(status.getVisibility() == View.VISIBLE ? R.string.files_details_hide : R.string.files_details_show));
         startButton.setEnabled(req.isEmpty() && !copying);
+        startButton.setAlpha(req.isEmpty() && !copying ? 1f : 0.45f);
         importButton.setEnabled(!copying);
         exitButton.setEnabled(!copying);   // R-161: no Exit in the middle of a copy
     }
@@ -236,6 +337,7 @@ public class SetupActivity extends Activity {
     }
 
     private void pickFolder() {
+        if (!LegalNotice.accepted(this)) { LegalNotice.show(this,this::pickFolder); return; }
         Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
         i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
         // R-160: open the picker at Download/RA2 (where the instructions say
@@ -363,15 +465,17 @@ public class SetupActivity extends Activity {
             String head = err != null ? getString(R.string.setup_failed, err)
                                       : getString(R.string.setup_imported, count);
             status.setText(head + "\n\n" + status.getText());
+            status.setVisibility(View.VISIBLE);
+            detailsButton.setText(getString(R.string.files_details_hide));
             if (err == null && missing(dataDir(this), true).isEmpty()) startGame();
         });
     }
 
+    /** Thor RA2: "Continue" returns to the Thor launcher, where the player picks the mode. */
     private void startGame() {
-        // NEW_TASK only: RA2Activity is singleInstance, so a running game
-        // (backgrounded with Home) is brought back as it was, not restarted.
-        Intent i = new Intent(this, de.harmssi.thorra2.ThorActivity.class);   // Thor RA2
-        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        if (!LegalNotice.accepted(this)) { LegalNotice.show(this,this::startGame); return; }
+        Intent i = new Intent(this, de.harmssi.thorra2.ThorLauncher.class);
+        i.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         startActivity(i);
         finish();
     }

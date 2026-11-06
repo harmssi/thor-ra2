@@ -11,7 +11,7 @@
     // Agent E draws the cursor art from this; over the sidebar it is None.
     ra2engine::Input::Action cursor_action() const {
         if (sidebar_up_ && lay_.contains(mx_, my_)) return ra2engine::Input::Action::None;
-        return input_.action_at(mx_, my_);
+        return input_.action_at(int(mx_/world_zoom_),int(my_/world_zoom_));
     }
 
     // G-10: selection bracket + health bar over the selected own building.
@@ -19,6 +19,64 @@
     // agent E's art; this draws the same information with plain rects.]
     // Colour thresholds = [General] ConditionYellow / ConditionRed.
     mutable ra2engine::TextureCache* pip_tc_ = nullptr;   // W2-UI-11 (set by render)
+    void draw_psychic_sensors(SDL_Renderer* ren) const {
+        std::map<int,ra2assets::Rgba> intent_colors;
+        auto point=[&](double x,double y) {
+            return SDL_Point{static_cast<int>(std::lround((x-y)*30))+cam_.x+30,
+                static_cast<int>(std::lround((x+y)*15-world_.cell_level(static_cast<int>(x),static_cast<int>(y))*15))+cam_.y+15};
+        };
+        SDL_Rect clip{0,0,playfield_w_,kWinH};SDL_RenderSetClipRect(ren,&clip);
+        for(int bi=0;bi<static_cast<int>(world_.buildings().size());++bi) {
+            if(!ra2engine::psychic_sensor_active(world_,bi,local_house_)) continue;
+            const auto& b=world_.buildings()[bi];
+            if(input_.selected_building()==bi) {
+                const double radius=world_.btypes()[b.type].w5.psychic_radius;
+                SDL_SetRenderDrawColor(ren,215,155,255,230);
+                SDL_Point prev=point(b.cx+(b.fw-1)*0.5+radius,b.cy+(b.fh-1)*0.5);
+                for(int k=1;k<=64;++k) {
+                    const double a=k*6.283185307179586/64;
+                    const auto next=point(b.cx+(b.fw-1)*0.5+radius*std::cos(a),b.cy+(b.fh-1)*0.5+radius*std::sin(a));
+                    // Mobile accessibility styling: preserve the true radius,
+                    // with readable dashes instead of a solid boundary.
+                    if((k-1)%4<2) {
+                        SDL_RenderDrawLine(ren,prev.x,prev.y,next.x,next.y);
+                        SDL_RenderDrawLine(ren,prev.x,prev.y+1,next.x,next.y+1);
+                    }
+                    prev=next;
+                }
+            }
+            for(int ui=0;ui<static_cast<int>(world_.units().size());++ui) {
+                int x=0,y=0;if(!ra2engine::psychic_sensor_target(world_,bi,ui,x,y)) continue;
+                const auto& u=world_.units()[ui];
+                const auto from=point(u.fx,u.fy),to=point(x,y);
+                auto c=intent_colors.find(u.house);
+                if(c==intent_colors.end())c=intent_colors.emplace(u.house,
+                    ra2engine::psychic_intent_color(world_,ua_.pal,u.house)).first;
+                const auto color=c->second;
+                // One geometry batch per intent: black outline plus owner-
+                // coloured dash cores, without a draw call for every dash.
+                std::vector<SDL_Vertex> vertices;std::vector<int> indices;
+                auto quad=[&](const std::array<double,4>& d,double width,SDL_Color c) {
+                    const double length=std::hypot(d[2]-d[0],d[3]-d[1]);if(length<0.001)return;
+                    const float nx=float(-(d[3]-d[1])/length*width/2),ny=float((d[2]-d[0])/length*width/2);
+                    const int first=int(vertices.size());
+                    vertices.push_back({{float(d[0])+nx,float(d[1])+ny},c,{0,0}});
+                    vertices.push_back({{float(d[2])+nx,float(d[3])+ny},c,{0,0}});
+                    vertices.push_back({{float(d[2])-nx,float(d[3])-ny},c,{0,0}});
+                    vertices.push_back({{float(d[0])-nx,float(d[1])-ny},c,{0,0}});
+                    for(int i:{0,1,2,0,2,3})indices.push_back(first+i);
+                };
+                for(const auto& dash:ra2engine::psychic_intent_dashes(from.x,from.y,to.x,to.y)) {
+                    quad(dash,3.5,SDL_Color{0,0,0,240});quad(dash,1.5,SDL_Color{color.r,color.g,color.b,255});
+                }
+                if(!vertices.empty())SDL_RenderGeometry(ren,nullptr,vertices.data(),int(vertices.size()),indices.data(),int(indices.size()));
+                SDL_SetRenderDrawColor(ren,color.r,color.g,color.b,255);
+                SDL_RenderDrawLine(ren,to.x-4,to.y,to.x+4,to.y);
+                SDL_RenderDrawLine(ren,to.x,to.y-4,to.x,to.y+4);
+            }
+        }
+        SDL_RenderSetClipRect(ren,nullptr);
+    }
     void draw_selected_building(SDL_Renderer* ren) const {
         const int sb = input_.selected_building();
         if (sb < 0 || sb >= static_cast<int>(world_.buildings().size())) return;
@@ -129,7 +187,8 @@
         c.type = ra2engine::EventType::Deploy;
         const int sb = input_.selected_building();
         if (sb >= 0 && sb < static_cast<int>(world_.buildings().size()) &&
-            world_.buildings()[sb].house == local_house_ && !world_.buildings()[sb].occupants.empty())
+            world_.buildings()[sb].house == local_house_ &&
+            (!world_.buildings()[sb].occupants.empty() || world_.can_pack_slave_miner(sb)))
             c.whom.push_back(ra2engine::Target::building(sb));
         int first = -1;
         for (int i : input_.selection().ids()) {
@@ -199,6 +258,7 @@
                 if (view_set_[b.arg - 1]) {
                     cam_.x = view_cam_[b.arg - 1][0];
                     cam_.y = view_cam_[b.arg - 1][1];
+                    input_.pan(0, 0);   // clamp (the view may have been saved at another zoom)
                 }
                 return true;
             case C::SidebarUp: strip_scroll(-1); return true;
@@ -410,6 +470,11 @@
     // cmd_produce / cmd_suspend / cmd_abandon), so a replay or a lockstep peer
     // runs the same code on the same tick.
     void cameo_click(int type, bool right, bool shift) {
+        const auto power=ra2engine::power_cameo_type(type);
+        if(power!=ra2engine::SuperweaponType::None) {
+            if(!right && active_tab_==1 && world_.sw_ready(local_house_,power)) w2_arm_sw(power);
+            return;
+        }
         using ET = ra2engine::EventType;
         const int lh = local_house_;
         if (active_tab_ >= 2) {   // ---- units ----
@@ -472,6 +537,7 @@
     void draw_queue_badges(SDL_Renderer* ren, ra2engine::TextureCache& tc) const {
         if (!(ba_.ok && ba_.sidebar_ok)) return;
         for (const ra2engine::CameoCell& cell : lay_.cameos) {
+            if (ra2engine::power_cameo_type(cell.type)!=ra2engine::SuperweaponType::None) continue;
             ra2engine::QueueCat cat;
             if (active_tab_ >= 2) cat = rp_cat_of_unit(cell.type);
             else cat = active_tab_ == 1 ? ra2engine::QueueCat::Defense : ra2engine::QueueCat::Structure;

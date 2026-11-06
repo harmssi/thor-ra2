@@ -58,7 +58,7 @@ inline std::vector<std::string> gf_tokens(const std::string& v) {
 }
 
 inline std::string gf_default_country(ra2engine::World::Side side) {
-    return side == ra2engine::World::Side::Soviet ? "Russians" : "Americans";
+    return ra2engine::faction_country(side);
 }
 
 inline bool gf_owner_has(const Rules& rules, const std::string& id, const std::string& country) {
@@ -78,21 +78,24 @@ inline std::string gf_base_unit(const Rules& rules, const std::string& country) 
 }
 
 // A vehicle's movement/combat profile exactly as load_vehicle_assets builds it.
-inline ra2engine::UnitCombat gf_vehicle_combat(const Rules& rules, const std::string& id) {
+inline ra2engine::UnitCombat gf_vehicle_combat(const Rules& rules, const std::string& id,
+                                                   const Art* art = nullptr) {
     const ResolvedUnit ru = resolve_combat_unit(rules, id);
     ra2engine::UnitCombat c = ru.combat;
     c.is_vehicle = true;
     c.rot = rules.rot(id);
     c.turret = rules.has_turret(id);
     c.speed_cps = speed_to_cps(ru.speed);   // G-42 (C)
+    if (art) ra2engine::bind_unit_weapon_art(c,*art,rules,id);
     return c;
 }
 
-inline ra2engine::UnitCombat gf_infantry_combat(const Rules& rules, const std::string& id) {
+inline ra2engine::UnitCombat gf_infantry_combat(const Rules& rules, const std::string& id, const Art* art = nullptr) {
     const ResolvedUnit ru = resolve_combat_unit(rules, id);
     ra2engine::UnitCombat c = ru.combat;
     c.is_vehicle = false;
     c.speed_cps = speed_to_cps(ru.speed);   // G-42 (C)
+    if (art) ra2engine::bind_unit_weapon_art(c,*art,rules,id);
     return c;
 }
 
@@ -202,7 +205,7 @@ inline bool gf_free_cell_near(const ra2engine::World& world, int x, int y, int d
 inline int gf_spawn_start_force(ra2engine::World& world, const ra2assets::Ini& ini,
                                 const Rules& rules, int house, const std::string& country,
                                 int sx, int sy, int unit_count, int tech_level, GfRng& rng,
-                                std::vector<std::string>* spawned_ids) {
+                                std::vector<std::string>* spawned_ids, const Art* art = nullptr) {
     int mcv = -1;
     const std::string base_id = gf_base_unit(rules, country);
     int n = unit_count;
@@ -210,7 +213,7 @@ inline int gf_spawn_start_force(ra2engine::World& world, const ra2assets::Ini& i
         --n;   // the MCV is one of UnitCount (bases on)
         int x = sx, y = sy;
         if (gf_free_cell_near(world, sx, sy, 1, rng, x, y)) {
-            world.add_combat_unit(x, y, house, gf_vehicle_combat(rules, base_id));
+            world.add_combat_unit(x, y, house, gf_vehicle_combat(rules, base_id, art));
             mcv = static_cast<int>(world.units().size()) - 1;
             if (spawned_ids) spawned_ids->push_back(base_id);
         }
@@ -232,7 +235,7 @@ inline int gf_spawn_start_force(ra2engine::World& world, const ra2assets::Ini& i
         int x = sx, y = sy;
         if (!gf_free_cell_near(world, sx, sy, 4, rng, x, y)) break;
         world.add_combat_unit(x, y, house,
-                              veh ? gf_vehicle_combat(rules, id) : gf_infantry_combat(rules, id));
+                              veh ? gf_vehicle_combat(rules, id, art) : gf_infantry_combat(rules, id, art));
         if (spawned_ids) spawned_ids->push_back(id);
         spent += std::max(1, rules.cost(id));
     }
@@ -394,16 +397,18 @@ Scene* gf_make_restart_scene(bool no_audio, const ra2engine::SkirmishConfig& cfg
 // gF G-17 [RE: multihouse.md §1, CONFIRMED [Countries] + per-country Side=]:
 // the lobby picks a COUNTRY; the side follows from its rules Side= (GDI ->
 // Allied, Nod -> Soviet). The playable list is the [Countries] order minus
-// YuriCountry (Yuri's side is a non-goal) and the passive/civilian houses.
-inline const std::vector<std::string>& gf_lobby_countries() {
+// Passive/civilian houses are omitted. Yuri is an explicit human skirmish preview.
+inline const std::vector<std::string>& gf_lobby_countries(bool include_yuri = false) {
     static const std::vector<std::string> k = {"Americans", "Alliance", "French", "Germans",
                                                "British", "Africans", "Arabs", "Confederation",
                                                "Russians"};
-    return k;
+    static const std::vector<std::string> yr = []{auto v=k;v.push_back("YuriCountry");return v;}();
+    return include_yuri ? yr : k;
 }
 inline ra2engine::World::Side gf_side_of_country(const Rules& rules, const std::string& c) {
     std::string side = rules.section_string(c, "Side", "");
     for (char& ch : side) ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
+    if (side == "THIRDSIDE" || c == "YuriCountry") return ra2engine::World::Side::Yuri;
     if (side == "NOD") return ra2engine::World::Side::Soviet;
     if (side == "GDI") return ra2engine::World::Side::Allied;
     const auto& k = gf_lobby_countries();   // rules without Side=: the documented split

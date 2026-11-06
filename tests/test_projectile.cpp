@@ -1,4 +1,28 @@
 #include "doctest.h"
+#include "iso_project.hpp"
+#include "building_transition.hpp"
+
+TEST_CASE("presentation: projectiles keep their terrain anchor and relative flight height") {
+    CHECK(ra2engine::projectile_screen_y(300,0)==300);
+    CHECK(ra2engine::projectile_screen_y(300,104)==285);
+    CHECK(ra2engine::projectile_screen_y(240,104)==225);
+    CHECK(ra2engine::projectile_screen_y(240,416)==180);
+}
+TEST_CASE("presentation: bunker motion follows authored opening and reverse closing durations") {
+    CHECK(ra2engine::bunker_motion_ticks(0,10,4,false)==40);
+    CHECK(ra2engine::bunker_motion_ticks(10,20,4,false)==40);
+    CHECK(ra2engine::bunker_motion_ticks(0,10,4,true)==40);
+    CHECK(ra2engine::bunker_motion_ticks(0,0,0,false)==1);
+    CHECK(ra2engine::transition_blend(0,40,0)==0);
+    CHECK(ra2engine::transition_blend(40,40,0)==1);
+    CHECK(ra2engine::transition_blend(20,40,0)==doctest::Approx(0.5));
+    CHECK(ra2engine::transition_blend(20,40,0.5)>0.5);
+    double last=0;
+    for(int render=0;render<=160;++render) {
+        const double value=ra2engine::transition_blend(render/4,40,(render%4)/4.0);
+        CHECK(value>=last);CHECK(value<=1);last=value;
+    }
+}
 
 #include <algorithm>
 #include <cmath>
@@ -416,6 +440,47 @@ TEST_CASE("projectile world: firewall CLOSED -> the instant hit lands the same s
     CHECK(r.world.units()[1].hp == 1000 - 90);
     CHECK(r.world.take_projectile_events().empty());
     CHECK(r.world.projectiles().empty());
+}
+
+TEST_CASE("projectile muzzle: lateral art offset and hull turret origin agree at launch") {
+    Rig r;
+    r.world.enable_projectiles(ProjectileRules{});
+    auto gun=cannon_stats();gun.is_vehicle=true;gun.w6.omni_fire=true;
+    gun.proj.flh[0]=160;gun.proj.flh[1]=30;gun.proj.turret_offset=50;
+    gun.proj.weapon_id="TEST_CANNON";
+    r.world.add_combat_unit(2,8,0,gun);
+    r.world.add_combat_unit(2,3,1,soft_target_stats());
+    r.world.units()[0].body_facing=16384; // hull east
+    r.world.units()[0].turret_facing=0;   // gun north
+    r.world.step(1.0/15.0);
+    const auto events=r.world.take_projectile_events();
+    REQUIRE(!events.empty());
+    CHECK(events.front().kind==ProjectileEvent::Launch);
+    CHECK(events.front().x==2*256-30+50);
+    CHECK(events.front().y==8*256-160);
+    REQUIRE(!r.world.projectiles().empty());
+    CHECK(r.world.projectiles().front().weapon_id=="TEST_CANNON");
+}
+
+TEST_CASE("projectile world: ground force-fire launches from FLH and damages only at impact") {
+    ra2assets::MapFile map;
+    auto& cells=const_cast<std::vector<ra2assets::MapCell>&>(map.cells());
+    for(int y=0;y<12;++y)for(int x=0;x<12;++x)cells.push_back({x,y,0,0,0});
+    World w(map);w.enable_projectiles(ProjectileRules{});
+    auto gun=cannon_stats();gun.proj.weapon_id="GROUND_CANNON";
+    w.add_combat_unit(2,2,0,gun);
+    w.add_combat_unit(6,2,0,soft_target_stats());
+    w.order_attack_cell(0,6,2);
+    w.step(1.0/15.0);
+    CHECK(w.units()[1].hp==1000);
+    REQUIRE(w.projectiles().size()==1);
+    CHECK(w.projectiles()[0].weapon_id=="GROUND_CANNON");
+    CHECK(w.projectiles()[0].tx==6*256);
+    CHECK(w.projectiles()[0].ty==2*256);
+    CHECK(w.projectiles()[0].z==100);
+    CHECK(count_kind(w.take_projectile_events(),ProjectileEvent::Launch)==1);
+    for(int i=0;i<45 && w.units()[1].hp==1000;++i)w.step(1.0/15.0);
+    CHECK(w.units()[1].hp<1000);
 }
 
 TEST_CASE("projectile world: firewall OPEN -> damage arrives at detonation, ~15 frames later") {

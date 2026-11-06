@@ -17,6 +17,10 @@ import org.ra2.engine.RA2Activity;
 public class ThorActivity extends RA2Activity {
     private static final String TAG = "ThorRA2";
     public static final String EXTRA_SINGLE = "single";
+    /** Launcher choice: "ra2" (Yuri hidden in the skirmish lobby) or "yr" (default). */
+    public static final String EXTRA_MODE = "mode";
+    /** ZOOM in percent chosen in the launcher (another process: prefs may be cached here). */
+    public static final String EXTRA_ZOOM = "zoom";
     private ThorScreens screens;
 
     @Override
@@ -28,7 +32,11 @@ public class ThorActivity extends RA2Activity {
         boolean dual = !getIntent().getBooleanExtra(EXTRA_SINGLE, false) && ThorScreens.hasSecondScreen(this);
         try {
             ThorBridge.setDualScreen(dual);
-            ThorBridge.setZoom(getSharedPreferences(ThorBridge.PREFS, MODE_PRIVATE).getInt(ThorBridge.PREF_ZOOM, 100));
+            ThorBridge.setYuriAllowed(!"ra2".equals(getIntent().getStringExtra(EXTRA_MODE)));
+            android.content.SharedPreferences prefs = getSharedPreferences(ThorBridge.PREFS, MODE_PRIVATE);
+            int zoom = getIntent().getIntExtra(EXTRA_ZOOM, prefs.getInt(ThorBridge.PREF_ZOOM, 100));
+            prefs.edit().putInt(ThorBridge.PREF_ZOOM, zoom).apply();
+            ThorBridge.setZoom(zoom);
         } catch (UnsatisfiedLinkError e) {
             Log.w(TAG, "engine bridge missing", e);
             dual = false;
@@ -37,6 +45,18 @@ public class ThorActivity extends RA2Activity {
         if (dual) {
             screens = new ThorScreens(this);
             screens.start();
+        }
+    }
+
+    /** A running game brought back from the launcher takes the newly chosen mode (next lobby). */
+    @Override
+    protected void onNewIntent(android.content.Intent intent) {
+        super.onNewIntent(intent);
+        if (intent.hasExtra(EXTRA_MODE)) {
+            try {
+                ThorBridge.setYuriAllowed(!"ra2".equals(intent.getStringExtra(EXTRA_MODE)));
+            } catch (UnsatisfiedLinkError ignored) {
+            }
         }
     }
 

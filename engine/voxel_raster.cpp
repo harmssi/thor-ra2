@@ -1,7 +1,9 @@
 #include "voxel_raster.hpp"
+#include "terrain_tilt.hpp"
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <cctype>
 
 namespace ra2engine {
 namespace {
@@ -13,6 +15,18 @@ namespace {
 constexpr double kPi = 3.14159265358979323846;
 
 struct V3 { double x, y, z; };
+std::size_t hva_section(const ra2assets::HvaModel& h, const std::string& name,
+                        std::size_t fallback, std::size_t count) {
+    auto equal=[](const std::string& a,const std::string& b) {
+        if(a.size()!=b.size()) return false;
+        for(std::size_t i=0;i<a.size();++i)
+            if(std::tolower(static_cast<unsigned char>(a[i]))!=std::tolower(static_cast<unsigned char>(b[i]))) return false;
+        return true;
+    };
+    for(std::size_t i=0;i<h.section_names.size() && i<count;++i)
+        if(equal(name,h.section_names[i])) return i;
+    return std::min(fallback,count-1); // unnamed legacy fixtures retain index ordering
+}
 
 // hva 3x4 (rows) applied to p, translation column pre-scaled by `scale`
 // [RE: voxel-render.md §1].
@@ -77,10 +91,17 @@ double index_to_yaw(int i, int n) {
 
 VoxelSprite rasterize_model(const ra2assets::VxlModel& m, const ra2assets::HvaModel& hva,
                             double yaw_rad, const ra2assets::Vpl& vpl,
-                            const ra2assets::Palette& pal, int hva_frame, double pitch_rad) {
+                            const ra2assets::Palette& pal, int hva_frame, double pitch_rad, int ramp) {
     const double c = std::cos(yaw_rad), s = std::sin(yaw_rad);
     const double cp = pitch_rad == 0.0 ? 1.0 : std::cos(pitch_rad);
     const double sp = pitch_rad == 0.0 ? 0.0 : std::sin(pitch_rad);
+    const auto tilt=terrain_tilt(ramp);
+    auto oriented=[&](V3 p) {
+        p=yaw_rotate(pitch_rotate(p,cp,sp),c,s);
+        if(ramp==0) return p; // preserve flat-ground raster output exactly
+        const auto q=tilt.apply(p.x,p.y,p.z);
+        return V3{q[0],q[1],q[2]};
+    };
 
     VoxelSprite out;
     if (m.sections.empty() || hva.frames.empty() || hva.frames[0].empty()) return out;
@@ -92,14 +113,14 @@ VoxelSprite rasterize_model(const ra2assets::VxlModel& m, const ra2assets::HvaMo
     double mnx = 1e9, mny = 1e9, mxx = -1e9, mxy = -1e9;
     for (size_t si = 0; si < m.sections.size(); ++si) {
         const auto& sec = m.sections[si];
-        const auto& xf = hva.frames.at(hf).at(std::min(si, hva.frames[hf].size() - 1));
+        const auto& xf = hva.frames.at(hf).at(hva_section(hva,sec.name,si,hva.frames[hf].size()));
         for (int corner = 0; corner < 8; ++corner) {
             const V3 lo = {sec.min_bounds[0], sec.min_bounds[1], sec.min_bounds[2]};
             const V3 hi = {sec.max_bounds[0], sec.max_bounds[1], sec.max_bounds[2]};
             const V3 p = {(corner & 1) ? hi.x : lo.x, (corner & 2) ? hi.y : lo.y,
                           (corner & 4) ? hi.z : lo.z};
             double sx, sy, d;
-            project(yaw_rotate(pitch_rotate(apply_xform(xf.transform, sec.scale, p), cp, sp), c, s), sx, sy, d);
+            project(oriented(apply_xform(xf.transform, sec.scale, p)), sx, sy, d);
             mnx = std::min(mnx, sx); mxx = std::max(mxx, sx);
             mny = std::min(mny, sy); mxy = std::max(mxy, sy);
         }
@@ -117,8 +138,9 @@ VoxelSprite rasterize_model(const ra2assets::VxlModel& m, const ra2assets::HvaMo
 
     // Light dirs rotated into model space ONCE per call (world-fixed light):
     const double lc = std::cos(-yaw_rad), ls = std::sin(-yaw_rad);
-    const double L[3] = {kLightWorld[0] * lc - kLightWorld[1] * ls,
-                         kLightWorld[0] * ls + kLightWorld[1] * lc, kLightWorld[2]};
+    const auto light=tilt.inverse(kLightWorld[0],kLightWorld[1],kLightWorld[2]);
+    const double L[3] = {light[0] * lc - light[1] * ls,
+                         light[0] * ls + light[1] * lc, light[2]};
     double H[3] = {L[0], L[1], L[2] + 1.0};
     const double hn = std::sqrt(H[0] * H[0] + H[1] * H[1] + H[2] * H[2]);
     H[0] /= hn; H[1] /= hn; H[2] /= hn;
@@ -126,7 +148,7 @@ VoxelSprite rasterize_model(const ra2assets::VxlModel& m, const ra2assets::HvaMo
     // Pass 2: voxels.
     for (size_t si = 0; si < m.sections.size(); ++si) {
         const auto& sec = m.sections[si];
-        const auto& xf = hva.frames.at(hf).at(std::min(si, hva.frames[hf].size() - 1));
+        const auto& xf = hva.frames.at(hf).at(hva_section(hva,sec.name,si,hva.frames[hf].size()));
         const double stepx = (sec.max_bounds[0] - sec.min_bounds[0]) / sec.size_x;
         const double stepy = (sec.max_bounds[1] - sec.min_bounds[1]) / sec.size_y;
         const double stepz = (sec.max_bounds[2] - sec.min_bounds[2]) / sec.size_z;
@@ -141,7 +163,7 @@ VoxelSprite rasterize_model(const ra2assets::VxlModel& m, const ra2assets::HvaMo
                                       sec.min_bounds[1] + y * stepy,
                                       sec.min_bounds[2] + z * stepz};
                     double sx, sy, depth;
-                    project(yaw_rotate(pitch_rotate(apply_xform(xf.transform, sec.scale, local), cp, sp), c, s),
+                    project(oriented(apply_xform(xf.transform, sec.scale, local)),
                             sx, sy, depth);
                     const int px = static_cast<int>(std::round(sx)) + out.anchor_x;
                     const int py = static_cast<int>(std::round(sy)) + out.anchor_y;
@@ -165,8 +187,9 @@ VoxelSprite rasterize_model(const ra2assets::VxlModel& m, const ra2assets::HvaMo
 }
 
 VoxelSprite rasterize_shadow(const ra2assets::VxlModel& m, const ra2assets::HvaModel& hva,
-                             double yaw_rad, int alpha) {
+                             double yaw_rad, int alpha, int ramp) {
     const double c = std::cos(yaw_rad), s = std::sin(yaw_rad);
+    const auto tilt=terrain_tilt(ramp);
     VoxelSprite out;
     if (m.sections.empty() || hva.frames.empty() || hva.frames[0].empty()) return out;
     // Collect the flattened projections first (bounds), then plot.
@@ -174,7 +197,7 @@ VoxelSprite rasterize_shadow(const ra2assets::VxlModel& m, const ra2assets::HvaM
     double mnx = 1e9, mny = 1e9, mxx = -1e9, mxy = -1e9;
     for (size_t si = 0; si < m.sections.size(); ++si) {
         const auto& sec = m.sections[si];
-        const auto& xf = hva.frames.at(0).at(std::min(si, hva.frames[0].size() - 1));
+        const auto& xf = hva.frames.at(0).at(hva_section(hva,sec.name,si,hva.frames[0].size()));
         const double stepx = (sec.max_bounds[0] - sec.min_bounds[0]) / sec.size_x;
         const double stepy = (sec.max_bounds[1] - sec.min_bounds[1]) / sec.size_y;
         const double stepz = (sec.max_bounds[2] - sec.min_bounds[2]) / sec.size_z;
@@ -187,6 +210,8 @@ VoxelSprite rasterize_shadow(const ra2assets::VxlModel& m, const ra2assets::HvaM
                     const V3 local = {sec.min_bounds[0] + x * stepx, sec.min_bounds[1] + y * stepy,
                                       sec.min_bounds[2] + z * stepz};
                     V3 w = yaw_rotate(apply_xform(xf.transform, sec.scale, local), c, s);
+                    const auto tilted=tilt.apply(w.x,w.y,w.z);
+                    w.x=tilted[0];w.y=tilted[1];
                     w.z = 0.0;   // flattened onto the ground plane
                     double sx, sy, d;
                     project(w, sx, sy, d);

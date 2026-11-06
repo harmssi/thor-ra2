@@ -48,7 +48,11 @@ struct UnitTypeW7 {
     // W7-10-02 [RE: CaptureManager ctor 0x4716F0]: the mind-control capacity
     // = the primary weapon's Damage; InfiniteMindControl= lifts the cap.
     int mc_capacity = 1;
+    bool mind_control = false;
     bool mc_infinite = false;
+    bool bunkerable = false;
+    bool magnetic = false; // primary warhead IsLocomotor, not ordinary damage
+    std::vector<int> overload_count, overload_damage, overload_frames;
     // W7-04-03 [RE: Time_To_Build FUN_006F3D00 @0x6F3D4E, type +0x608]:
     // BuildTimeMultiplier= (HTNK / MTNK / LTNK 1.5, TTNK / ROBO 1.3).
     double build_time_mult = 1.0;
@@ -84,8 +88,12 @@ struct UnitW7 {
     // W7-10-02/03: the controller holding this unit (-1 none) -- the
     // original's MindControlledBy (+0x2C0) -- and a controller's victims.
     int mc_controller = -1;
+    int mc_building = -1;
     std::vector<int> mc_victims;
     int mc_shot = -1;   // W7-10-04: the victim of this frame's Controller shot
+    int mc_original_house = -1;
+    int overload_left = 0;
+    int slave_manager = -1; // >=0 building; -1 free; -2-mobile unit index while packed
     // (W7-04-08's per-unit missile_holds list was removed in fv7c / save v40:
     // the PauseFrames + TiltFrames hold lives in the spawn-manager node,
     // AnUnit::sp_state / sp_timer [RE: SpawnManagerClass::AI FUN_006B68B0 / 0x6B72E0].)
@@ -93,6 +101,9 @@ struct UnitW7 {
 
 // Per-building state.
 struct BldW7 {
+    std::vector<int> mc_victims;
+    bool slaves_initialized = false;
+    int slave_regen_left = 0;
     // W7-08-03 [RE: BuildingClass::Mission_Repair 0x44B780, +0x620]: the
     // depot's own URepairRate accumulator (next paid step frame).
     std::int64_t depot_next = -1;

@@ -231,3 +231,55 @@ TEST_CASE("lobby: Random resolution never duplicates a colour; deterministic per
         CHECK(a[i].country == b[i].country);
     }
 }
+
+TEST_CASE("lobby: unsupported preview countries never enter AI or random picks") {
+    auto c=ctx(); c.countries.push_back("YuriCountry");
+    c.side_of=[](const std::string& name){return name=="YuriCountry" ? World::Side::Yuri : World::Side::Allied;};
+    auto st=lobby_first_run(LobbyRulesInfo{});
+    st.rows[0].country=9;st.rows[1].country=9;
+    c.country_allowed=[](int row,const std::string& name){return name!="YuriCountry" || row==0;};
+    auto cfg=lobby_to_config(st,c);
+    CHECK(cfg.slots[0].country=="YuriCountry");
+    CHECK(cfg.slots[0].side==World::Side::Yuri);
+    CHECK(cfg.slots[1].country!="YuriCountry");
+    c.country_allowed=[](int,const std::string& name){return name!="YuriCountry";};
+    st.rows[0].country=kLobbyRandom;st.rows[1].country=kLobbyRandom;
+    for(unsigned seed=1;seed<=50;++seed) {
+        c.seed=seed;const auto resolved=lobby_resolve(st,c);
+        for(const auto& row:resolved) CHECK(row.country!=9);
+    }
+}
+
+TEST_CASE("lobby: teams persist, survive inactive row gaps, and require an enemy") {
+    LobbyState st=lobby_first_run({});
+    st.rows[0].team=1;st.rows[1].team=1;
+    st.rows[2].ai=kLobbyAiMedium;st.rows[2].team=2;
+    CHECK(lobby_validate(st,8)==LobbyCheck::Ok);
+    IniDoc doc=IniDoc::parse("[Other]\nKeep=yes\n");lobby_store(st,doc,kCountries);
+    const auto loaded=lobby_load(doc,lobby_first_run({}),{},kCountries);
+    CHECK(loaded.rows[0].team==1);CHECK(loaded.rows[1].team==1);CHECK(loaded.rows[2].team==2);
+    auto cfg=lobby_to_config(loaded,ctx());REQUIRE(cfg.slots.size()==4);
+    CHECK(cfg.slots[0].alliance_team==1);CHECK(cfg.slots[1].alliance_team==1);
+    CHECK(cfg.slots[2].alliance_team==2);CHECK(cfg.slots[3].alliance_team==-1);
+    st.rows[2].team=1;CHECK(lobby_validate(st,8)==LobbyCheck::NeedEnemy);
+    st.rows[2].team=-1;CHECK(lobby_validate(st,8)==LobbyCheck::Ok);
+    lobby_set_ai(st,1,kLobbyAiNone);CHECK(st.rows[1].team==-1);
+    cfg=lobby_to_config(st,ctx());REQUIRE(cfg.slots.size()==3);
+    CHECK(cfg.slots[1].alliance_team==-1);
+    doc.set("Skirmish","Team0","999");doc.set("Skirmish","Team1","2");
+    const auto sanitized=lobby_load(doc,st,{},kCountries);CHECK(sanitized.rows[0].team==-1);
+    CHECK(sanitized.rows[1].team==2); // stored active row is restored before its team
+}
+
+TEST_CASE("lobby: requested lettered teams A through K persist") {
+ CHECK(lobby_team_label(-1)=="-");CHECK(lobby_team_label(0)=="A");CHECK(lobby_team_label(10)=="K");
+ for(int team=0;team<kLobbyTeams;++team){auto st=lobby_first_run({});st.rows[0].team=team;
+ IniDoc doc;lobby_store(st,doc,kCountries);auto restored=lobby_load(doc,st,{},kCountries);
+ CHECK(restored.rows[0].team==team);}
+}
+
+TEST_CASE("lobby: spawn selection round trips without altering teams") {
+ auto st=lobby_first_run({});st.rows[0].spawn=2;st.rows[1].spawn=0;IniDoc doc;lobby_store(st,doc,kCountries);
+ const auto restored=lobby_load(doc,st,{},kCountries);CHECK(restored.rows[0].spawn==2);CHECK(restored.rows[1].spawn==0);
+ doc.set("Skirmish","Spawn0","999");CHECK(lobby_load(doc,st,{},kCountries).rows[0].spawn==-1);
+}

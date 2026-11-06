@@ -101,7 +101,7 @@ struct FxWeapon {
     // W2-GA-15 [RE: rulesmd weapon IsElectricBolt (Tesla coil / trooper /
     // tank), IsLaser + LaserDuration + IsHouseColor (Prism)]: drawn as a beam
     // from the muzzle to the target instead of only an impact.
-    bool bolt = false, laser = false, laser_house = false;
+    bool bolt = false, laser = false, laser_house = false, disk = false;
     // W6-04-24 [rules IsRadBeam= (Desolator RadBeamWeapon), IsLine= (Boris's
     // Flare)]: two more beam kinds. [RE-FALLBACK: colours / life -- the rad
     // beam in [Radiation] RadColor, the flare line red, LaserDuration-like life.]
@@ -207,6 +207,7 @@ public:
         };
         fw.bolt = yes("IsElectricBolt");
         fw.laser = yes("IsLaser");
+        fw.disk = yes("DiskLaser");
         fw.laser_house = yes("IsHouseColor");
         fw.rad_beam = yes("IsRadBeam");   // W6-04-24
         fw.line = yes("IsLine");
@@ -253,6 +254,7 @@ public:
         double seg_lep = 20.0;   // W7-12-06 rad beam segment length (leptons)
         double len_lep = 0.0;    // the beam's length in leptons
         bool white_core = true;  // W7-12-31 bolt: one of the 3 arcs in PALETTE[15]
+        double disk_x=0,disk_y=0; // fixed nearest-rim beam origin, screen offsets
     };
     // W7-12-06 / W7-12-32 colours, read once at init (Presentation::init).
     void set_beam_colors(SDL_Color rad, SDL_Color chrono) {
@@ -296,7 +298,7 @@ public:
             b.inner = SDL_Color{255, 40, 40, 255};
             b.life = 8;
         }
-        if (fw.laser) {
+        if (fw.laser || fw.disk) {
             if (fw.laser_house) {
                 // W7-12-32 [RE: 0x6fc6d0 / 0x550680]: inner = LaserColor,
                 // outer = inner >> 1, thickness 2, house-colour draw path.
@@ -311,6 +313,10 @@ public:
                 b.outer = SDL_Color{216, 0, 184, 255};
                 b.inner = SDL_Color{255, 255, 255, 255};
             }
+        }
+        if (fw.disk) {
+            b.kind=4;const auto rim=ra2engine::disk_laser_rim(x1-x0,y1-y0);
+            b.disk_x=(rim[0]-rim[1])*30;b.disk_y=(rim[0]+rim[1])*15;
         }
         beams_.push_back(b);
     }
@@ -340,9 +346,24 @@ public:
         };
         SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
         for (const Link& l : links_) {
-            if (l.from < 0 || l.to < 0 || l.from >= static_cast<int>(us.size()) || l.to >= static_cast<int>(us.size())) continue;
+            if (l.to<0 || l.to>=static_cast<int>(us.size())) continue;
+            const auto& victim=us[l.to];
+            if (!victim.alive || victim.die_time>=0 || !world_for_pal_->object_visible_at(g_local_house,victim.cell_x,victim.cell_y)) continue;
             int ax, ay, bx, by;
-            pt(us[static_cast<std::size_t>(l.from)], 20.0, ax, ay);
+            if(l.from>=0) {
+                if(l.from>=static_cast<int>(us.size())) continue;
+                const auto& source=us[l.from];
+                if(!world_for_pal_->object_visible_at(g_local_house,source.cell_x,source.cell_y)) continue;
+                pt(source,20.0,ax,ay);
+            } else {
+                const int bi=-1-l.from;
+                if(bi>=static_cast<int>(world_for_pal_->buildings().size())) continue;
+                const auto& source=world_for_pal_->buildings()[bi];
+                if(!world_for_pal_->object_visible_at(g_local_house,source.cx,source.cy)) continue;
+                const double x=source.cx+(source.fw-1)*0.5,y=source.cy+(source.fh-1)*0.5;
+                ax=static_cast<int>(std::lround((x-y)*30))+cam.x+30;
+                ay=static_cast<int>(std::lround((x+y)*15-world_for_pal_->cell_level(source.cx,source.cy)*15-30))+cam.y+15;
+            }
             pt(us[static_cast<std::size_t>(l.to)], 10.0, bx, by);
             SDL_SetRenderDrawColor(ren, l.c.r, l.c.g, l.c.b, 255);
             SDL_RenderDrawLine(ren, ax, ay, bx, by);
@@ -374,6 +395,26 @@ public:
             pt(b.x1, b.y1, b.l1, b.lift1, bx, by);
             const double fade = 1.0 - static_cast<double>(b.age) / std::max(1, b.life);
             const Uint8 a = static_cast<Uint8>(std::clamp(fade, 0.0, 1.0) * 255.0);
+            if (b.kind == 4) {
+                // Presentation fallback for DiskLaser's ring emitter. Keep it
+                // separate from straight lasers and read the weapon colours.
+                constexpr int segments=32;
+                for (int k=0;k<segments;++k) {
+                    const double t=k*6.283185307179586/segments;
+                    const double n=(k+1)*6.283185307179586/segments;
+                    const double rx=30*std::sqrt(2.0)*240/256,ry=rx/2;
+                    const int x=ax+static_cast<int>(std::lround(rx*std::cos(t)));
+                    const int y=ay+static_cast<int>(std::lround(ry*std::sin(t)));
+                    SDL_SetRenderDrawColor(ren,b.inner.r,b.inner.g,b.inner.b,a);
+                    SDL_RenderDrawLine(ren,x,y,ax+static_cast<int>(std::lround(rx*std::cos(n))),
+                        ay+static_cast<int>(std::lround(ry*std::sin(n))));
+                }
+                const int sx=ax+int(std::lround(b.disk_x)),sy=ay+int(std::lround(b.disk_y));
+                SDL_SetRenderDrawColor(ren,b.outer.r,b.outer.g,b.outer.b,a);
+                SDL_RenderDrawLine(ren,sx,sy-1,bx,by-1);SDL_RenderDrawLine(ren,sx,sy+1,bx,by+1);
+                SDL_SetRenderDrawColor(ren,b.inner.r,b.inner.g,b.inner.b,a);SDL_RenderDrawLine(ren,sx,sy,bx,by);
+                continue;
+            }
             if (b.kind == 2) {
                 // W7-12-06 [RE: RadBeam draw 0x659090 / 0x659500]: n segments of
                 // seg leptons; point k displaced (screen z) by sin(k/n * len*2
@@ -590,6 +631,7 @@ public:
     // GetRubbleImage FUN_0045f150].
     struct BldRules {
         bool refinery = false, unit_repair = false, cons_yard = false, occupiable = false, gate = false;
+        bool tank_bunker = false;
         bool leave_rubble = false, naval = false;
         int storage = 0;
         std::string destroy_anim;
@@ -607,6 +649,7 @@ public:
         r.cons_yard = yes("ConstructionYard");
         r.occupiable = yes("CanBeOccupied");
         r.gate = yes("Gate");
+        r.tank_bunker = yes("Bunker");
         r.leave_rubble = yes("LeaveRubble");
         r.naval = pres_lower(rget(id, "Factory")) == "unittype" && yes("Naval");
         r.storage = std::atoi(rget(id, "Storage").c_str());
@@ -658,7 +701,8 @@ public:
         // W3-FIX-A: Theater=yes anims (debris, waterfalls) take the theater
         // extension [RE: asset-search.md §1].
         const bool th = pres_lower(aget(key, "Theater")).rfind("y", 0) == 0;
-        if (auto shp = th ? theater_ext_shp(image) : load_shp(image)) {
+        const bool nt = pres_lower(aget(key, "NewTheater")).rfind("y", 0) == 0;
+        if (auto shp = th ? theater_ext_shp(image) : nt ? theater_shp(image) : load_shp(image)) {
             t = std::make_unique<FxAnimType>();
             fill_type(*t, key, shp);
         }
@@ -991,7 +1035,22 @@ PresFx* g_fx = nullptr;   // the live game's effects (GameScene); null in gates
 bool pres_draw_projectile(SDL_Renderer* ren, ra2engine::TextureCache& tc,
                           const ra2engine::World& world, const ra2engine::Projectile& p, int gx,
                           int sy, int W, int H) {
-    if (!g_fx || p.attacker < 0 || p.attacker >= static_cast<int>(world.units().size())) return false;
+    if (!g_fx) return false;
+    if (!p.weapon_id.empty()) {
+        const auto& fired=g_fx->weapon_fx(p.weapon_id);
+        if(fired.proj_image.empty()) return false;
+        auto shp=g_fx->projectile_shp(fired.proj_image);
+        if(!shp || shp->count()<=0) return false;
+        int frame=0;
+        if(fired.proj_rotates && shp->count()>1) {
+            const double ang=std::atan2((p.vx-p.vy)*30.0,-((p.vx+p.vy)*15.0-p.vz*36.74));
+            const double tau=2*3.14159265358979;
+            frame=static_cast<int>(std::lround((ang<0?ang+tau:ang)/tau*shp->count()))%shp->count();
+        }
+        g_fx->blit(ren,tc,*shp,"proj:"+fired.proj_image,frame,gx,sy,255,W,H);
+        return true;
+    }
+    if (p.attacker < 0 || p.attacker >= static_cast<int>(world.units().size())) return false;
     // W7-12-30: the projectile art of the weapon in the slot that fired it
     // (GGI deployed AAHeatSeeker2, APOC's AA missiles), elite when the
     // firer is elite and the type has the Elite* weapon.

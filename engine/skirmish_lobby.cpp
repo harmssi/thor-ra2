@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
+#include <stdexcept>
 
 namespace ra2engine {
 
@@ -191,6 +192,14 @@ LobbyState lobby_load(const IniDoc& d, const LobbyState& base, const LobbyRulesI
         st.rows[row].country = c;
         st.rows[row].color = col;
     }
+    for(int row=0;row<kLobbyRows;++row) {
+        st.rows[row].spawn=rd_int(kSk,("Spawn"+std::to_string(row)).c_str(),-1);
+        if(st.rows[row].spawn<0 || st.rows[row].spawn>=8)st.rows[row].spawn=-1;
+        const std::string key="Team"+std::to_string(row);
+        st.rows[row].team=rd_int(kSk,key.c_str(),-1);
+        if(st.rows[row].team<0 || st.rows[row].team>=kLobbyTeams) st.rows[row].team=-1;
+        if(row>0 && st.rows[row].ai==kLobbyAiNone) st.rows[row].team=-1;
+    }
     // Sanitize: out-of-range -> Random; None rows hold -2/-2; duplicate
     // colours keep the first (lowest row) owner.
     bool used[kLobbyColors] = {};
@@ -237,6 +246,9 @@ void lobby_store(const LobbyState& st, IniDoc& d, const std::vector<std::string>
         std::snprintf(val, sizeof val, "%d,%d,%d", lobby_ai_to_slot_type(r.ai), r.country, r.color);
         d.set(kSk, key, val);
     }
+    for(int row=0;row<kLobbyRows;++row)
+        d.set(kSk,"Team"+std::to_string(row),ww_format_int(lobby_row_active(st,row) ? st.rows[row].team : -1));
+    for(int row=0;row<kLobbyRows;++row)d.set(kSk,"Spawn"+std::to_string(row),ww_format_int(st.rows[row].spawn));
     if (!st.scen_file.empty()) d.set(kSk, "ScenFile", st.scen_file);
 }
 
@@ -279,6 +291,7 @@ void lobby_set_ai(LobbyState& st, int row, int ai) {
     if (ai == kLobbyAiNone) {
         st.rows[row].country = kLobbyRandom;
         st.rows[row].color = kLobbyRandom;
+        st.rows[row].team = -1;
     }
 }
 
@@ -306,6 +319,10 @@ LobbyCheck lobby_validate(const LobbyState& st, int map_max) {
     const int players = lobby_ai_count(st) + 1;
     if (map_max < players) return LobbyCheck::ScenarioTooSmall;
     if (players < 2) return LobbyCheck::NeedTwoPlayers;
+    bool enemy=st.rows[0].team<0 || st.rows[0].team>=kLobbyTeams;
+    for(int row=1;row<kLobbyRows;++row)
+        if(lobby_row_active(st,row) && st.rows[row].team!=st.rows[0].team) enemy=true;
+    if(!enemy) return LobbyCheck::NeedEnemy;
     return LobbyCheck::Ok;
 }
 
@@ -325,7 +342,14 @@ std::vector<LobbyResolved> lobby_resolve(const LobbyState& st, const LobbyConver
         const LobbyRow& r = st.rows[row];
         LobbyResolved z;
         z.row = row;
-        z.country = (r.country >= 0 && r.country < nc) ? r.country : rng.range(0, nc - 1);
+        if(ctx.country_allowed) {
+            std::vector<int> allowed;
+            for(int c=0;c<static_cast<int>(ctx.countries.size());++c)
+                if(ctx.country_allowed(row,ctx.countries[c])) allowed.push_back(c);
+            if(allowed.empty()) throw std::runtime_error("No supported country for lobby row");
+            z.country=std::find(allowed.begin(),allowed.end(),r.country)!=allowed.end() ? r.country :
+                allowed[rng.range(0,static_cast<int>(allowed.size())-1)];
+        } else z.country = (r.country >= 0 && r.country < nc) ? r.country : rng.range(0, nc - 1);
         if (r.color >= 0 && r.color < kLobbyColors) {
             z.color = r.color;
         } else {
@@ -359,7 +383,8 @@ SkirmishConfig lobby_to_config(const LobbyState& st, const LobbyConvertCtx& ctx)
                         ? ctx.countries[static_cast<std::size_t>(z.country)] : std::string();
         s.side = ctx.side_of ? ctx.side_of(s.country) : World::Side::Allied;
         s.color_ix = lobby_color_to_house(z.color);
-        s.alliance_team = -1;                     // FFA: no Team column in RA2-classic
+        const int team=st.rows[z.row].team;
+        s.alliance_team = team>=0 && team<kLobbyTeams ? team : -1;
         s.combatant = true;
         s.is_ai = z.row != 0;
         s.diff = s.is_ai ? lobby_ai_difficulty(st.rows[z.row].ai) : AiDifficulty::Normal;

@@ -1,4 +1,6 @@
 #pragma once
+#include "gattling.hpp"
+#include "civilian_frames.hpp"
 // Pure building core: type defs resolved from Rules/Art by the caller,
 // foundation cell math, placement validity, damage/frame selection, and
 // per-frame stepping (buildup progression, death anim timing). No SDL/OS.
@@ -12,6 +14,7 @@
 #include "unit_w6.hpp"   // wave-6 #4 (BldW6)
 #include "target_w6.hpp" // W6 fix #2 (BldTgt)
 #include "unit_w7.hpp"   // wave-7 fix (units) (BldW7)
+#include "unit_combat.hpp"
 
 namespace ra2engine {
 
@@ -21,6 +24,15 @@ class OreField;   // ore.hpp (W8-03-01 BuildMask)
 // Rules/Art, or a test by hand). Index into the roster vector is the
 // Building::type key used everywhere.
 struct BuildingTypeDef {
+    bool tank_bunker = false;
+    double bunker_damage = 1.3, bunker_rof = 1.3, bunker_range = 2.0;
+    bool mind_control = false;
+    UnitCombat slave_combat;
+    int slave_count = 0;
+    int slave_regen_rate = 500;
+    int slave_storage = 4;
+    int slave_harvest_rate = 150; // SLAV HarvestRate, game frames per bale
+    int slave_reload_rate = 25;  // manager SlaveReloadRate, game frames per bale
     std::string id;                  // "GAPOWR"
     int fw = 1, fh = 1;              // Art Foundation=WxH
     int strength = 1;
@@ -105,6 +117,7 @@ struct BuildingTypeDef {
     bool insignificant = false;     // Insignificant=
     BldTypeW5 w5;                   // wave-5 abilities (abil_w5.hpp)
     BldTypeW6 w6;                   // wave-6 #4 (unit_w6.hpp): wall damage levels
+    Gattling gattling;
 };
 
 // A placed building instance.
@@ -161,6 +174,13 @@ struct Building {
     bool   has_been_captured = false;
     bool   selling        = false;  // [§B2] mission 0x13 (Selling) is running
     double sell_time      = 0.0;    // seconds elapsed in the MIRRORED buildup [§B2]
+    int bunker_exit_left = -1; // lowering timer; -1 no player evacuation
+    // Explicit human/network attack order, independent of automatic acquisition.
+    int attack_order_kind = 0; // 0 none, 1 unit, 2 building, 3 ground cell
+    int attack_order_target = -1;
+    int attack_order_house = -1; // cancel if the structure changes hands
+    int attack_order_x = 0, attack_order_y = 0;
+    bool attack_order_force = false;
     bool   sold           = false;  // died via sell, not combat (suppresses the explosion)
     // --- P5 Veterancy + Crates [RE: veterancy.md V3/V6/C6] --- ALL inert:
     // vet_recv is set only by a vet-enabled World; killed_by is a plain stamp
@@ -205,6 +225,7 @@ struct Building {
     BldW6 w6;                        // wave-6 #4 units/weapons (unit_w6.hpp)
     BldTgt tg;                       // W6 fix #2: IsInPlayfield + Insignificant/LegalTarget (save v29)
     BldW7 w7;                        // wave-7 fix (units): unit_w7.hpp (save v35)
+    int gattling_charge = 0;
 };
 
 // Foundation origin convention [RE: building-render.md §2, pre-hunt]: the

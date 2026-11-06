@@ -1,5 +1,7 @@
 #include "doctest.h"
 #include "voxel_raster.hpp"
+#include "terrain_tilt.hpp"
+#include "voxel_animation_cache.hpp"
 #include "ra2assets/vxl.hpp"
 #include "ra2assets/hva.hpp"
 #include "ra2assets/vpl.hpp"
@@ -13,6 +15,74 @@
 #include <vector>
 
 namespace fs = std::filesystem;
+
+TEST_CASE("voxel animation cache: frame-boundary eviction preserves live part references") {
+    ra2engine::VoxelAnimationCache cache(700);
+    cache.begin_frame(1,1);
+    ra2engine::VoxelSprite hull;hull.w=10;hull.rgba.assign(400,42);
+    const auto* held=&cache.insert("hull",std::move(hull));
+    ra2engine::VoxelSprite turret;turret.rgba.assign(400,17);
+    cache.insert("turret",std::move(turret));
+    CHECK(cache.bytes()>700);
+    cache.begin_frame(1,1); // Another unit of the same type in this frame.
+    CHECK(cache.find("hull")==held);CHECK(held->rgba[0]==42);
+    CHECK(cache.evicted()==0);
+    cache.begin_frame(1,2);
+    CHECK(cache.evicted()==0); // Preserve the previous frame's working set.
+    cache.begin_frame(1,3);
+    CHECK(cache.bytes()<=700);CHECK(cache.evicted()>0);
+    // A new renderer may restart frame numbering; it is still a new epoch.
+    for(int frame=4;frame<100;++frame) {
+        cache.begin_frame(1,frame);CHECK(cache.size()<=2);
+        ra2engine::VoxelSprite s;s.rgba.assign(1024,1);
+        cache.insert(std::to_string(frame),std::move(s));
+    }
+    cache.begin_frame(2,1);cache.begin_frame(2,2);CHECK(cache.bytes()<=700);
+}
+
+TEST_CASE("voxel animation cache: reuse retains a frequently drawn facing") {
+    ra2engine::VoxelAnimationCache cache(700);
+    cache.begin_frame(1,1);
+    for(const char* key:{"old","hot"}) {
+        ra2engine::VoxelSprite s;s.rgba.assign(200,1);cache.insert(key,std::move(s));
+    }
+    cache.begin_frame(1,2);REQUIRE(cache.find("hot")!=nullptr);
+    ra2engine::VoxelSprite s;s.rgba.assign(200,1);cache.insert("new",std::move(s));
+    cache.begin_frame(1,3);
+    CHECK(cache.find("old")==nullptr);CHECK(cache.find("hot")!=nullptr);
+}
+
+TEST_CASE("voxel animation cache: a busy working set above budget does not churn") {
+    ra2engine::VoxelAnimationCache cache(100);
+    cache.begin_frame(1,1);
+    for(int i=0;i<10;++i) {
+        ra2engine::VoxelSprite s;s.rgba.assign(256,1);cache.insert(std::to_string(i),std::move(s));
+    }
+    for(int frame=2;frame<12;++frame) {
+        cache.begin_frame(1,frame);
+        for(int i=0;i<10;++i) REQUIRE(cache.find(std::to_string(i))!=nullptr);
+        CHECK(cache.evicted()==0);
+    }
+    cache.begin_frame(1,12);cache.begin_frame(1,13);
+    CHECK(cache.bytes()<=100);CHECK(cache.evicted()==10);
+}
+
+TEST_CASE("terrain tilt: ramp axes preserve length and invert without changing flat ground") {
+    for(int ramp=0;ramp<=20;++ramp) {
+        const auto t=ra2engine::terrain_tilt(ramp);
+        const auto p=t.apply(3,4,12);
+        CHECK(p[0]*p[0]+p[1]*p[1]+p[2]*p[2]==doctest::Approx(169));
+        const auto q=t.inverse(p[0],p[1],p[2]);
+        CHECK(q[0]==doctest::Approx(3));
+        CHECK(q[1]==doctest::Approx(4));
+        CHECK(q[2]==doctest::Approx(12));
+    }
+    CHECK(ra2engine::terrain_tilt(1).apply(1,0,0)[2]>0);
+    CHECK(ra2engine::terrain_tilt(3).apply(1,0,0)[2]<0);
+    CHECK(ra2engine::terrain_tilt(2).apply(0,1,0)[2]<0);
+    CHECK(ra2engine::terrain_tilt(4).apply(0,1,0)[2]>0);
+    CHECK(ra2engine::terrain_tilt(255).apply(3,4,12)==std::array<double,3>{3,4,12});
+}
 
 using ra2assets::VxlModel;
 using ra2assets::VxlSection;
@@ -73,6 +143,32 @@ int opaque_count(const ra2engine::VoxelSprite& s) {
 }
 }  // namespace
 
+TEST_CASE("voxel_raster: HVA animation changes the drawn anchor and wraps exactly") {
+    const auto model=single_voxel_model(100,0);auto hva=identity_hva();
+    hva.frames.push_back(hva.frames[0]);hva.frames[1][0].transform[0][3]=8;
+    hva.frame_count=2;
+    const auto vpl=identity_vpl();const auto pal=gray_pal();
+    const auto first=ra2engine::rasterize_model(model,hva,0,vpl,pal,0);
+    const auto second=ra2engine::rasterize_model(model,hva,0,vpl,pal,1);
+    const auto wrapped=ra2engine::rasterize_model(model,hva,0,vpl,pal,2);
+    REQUIRE(opaque_count(first)>0);REQUIRE(opaque_count(second)>0);
+    CHECK((first.anchor_x!=second.anchor_x || first.anchor_y!=second.anchor_y));
+    CHECK(wrapped.anchor_x==first.anchor_x);CHECK(wrapped.anchor_y==first.anchor_y);
+    CHECK(wrapped.rgba==first.rgba);
+}
+
+TEST_CASE("voxel shadow: terrain orientation changes silhouette without animating the shadow frame") {
+ auto model=single_voxel_model(100,0);model.sections[0].min_bounds[2]=20;model.sections[0].max_bounds[2]=21;
+ auto h=identity_hva();const auto flat=ra2engine::rasterize_shadow(model,h,0,128);
+ const auto explicit_flat=ra2engine::rasterize_shadow(model,h,0,128,0);
+ CHECK(flat.rgba==explicit_flat.rgba);CHECK(flat.anchor_x==explicit_flat.anchor_x);
+ const auto slope=ra2engine::rasterize_shadow(model,h,0,128,1);
+ CHECK(opaque_count(slope)>0);CHECK(slope.anchor_x!=flat.anchor_x);
+ h.frames.push_back(h.frames[0]);h.frames[1][0].transform[0][3]=99;h.frame_count=2;
+ const auto still=ra2engine::rasterize_shadow(model,h,0,128,1);
+ CHECK(still.rgba==slope.rgba);CHECK(still.anchor_x==slope.anchor_x);
+}
+
 TEST_CASE("voxel_raster: single voxel lands on the anchor") {
     auto spr = ra2engine::rasterize_model(single_voxel_model(100, 0), identity_hva(),
                                           0.0, identity_vpl(), gray_pal());
@@ -89,6 +185,34 @@ TEST_CASE("voxel_raster: single voxel lands on the anchor") {
             if (spr.rgba[(static_cast<size_t>(y) * spr.w + x) * 4 + 3] != 0) anchor_covered = true;
         }
     CHECK(anchor_covered);
+}
+
+TEST_CASE("voxel_raster: terrain is applied after facing and flat sprites stay identical") {
+    auto model=single_voxel_model(100,0);
+    // An off-origin voxel makes the slope's height effect observable.
+    model.sections[0].min_bounds[0]=20;
+    model.sections[0].max_bounds[0]=21;
+    const auto h=identity_hva();const auto v=identity_vpl();const auto pal=gray_pal();
+    const auto flat=ra2engine::rasterize_model(model,h,0,v,pal);
+    const auto explicit_flat=ra2engine::rasterize_model(model,h,0,v,pal,0,0,0);
+    CHECK(flat.rgba==explicit_flat.rgba);
+    CHECK(flat.anchor_y==explicit_flat.anchor_y);
+    const auto uphill=ra2engine::rasterize_model(model,h,0,v,pal,0,0,1);
+    const auto downhill=ra2engine::rasterize_model(model,h,0,v,pal,0,0,3);
+    REQUIRE(opaque_count(uphill)>0);
+    REQUIRE(opaque_count(downhill)>0);
+    auto relative_y=[](const ra2engine::VoxelSprite& s) {
+        double sum=0;int n=0;
+        for(int y=0;y<s.h;++y) for(int x=0;x<s.w;++x)
+            if(s.rgba[(y*s.w+x)*4+3]) {sum+=y-s.anchor_y;++n;}
+        return sum/n;
+    };
+    CHECK(relative_y(uphill)<relative_y(flat));
+    CHECK(relative_y(downhill)>relative_y(flat));
+    // Turning perpendicular to the uphill axis removes that axis' rise.
+    const auto side=ra2engine::rasterize_model(model,h,3.14159265358979323846/2,v,pal,0,0,1);
+    const auto side_flat=ra2engine::rasterize_model(model,h,3.14159265358979323846/2,v,pal);
+    CHECK(std::abs(relative_y(side)-relative_y(side_flat))<=1.0);
 }
 
 TEST_CASE("voxel_raster: yaw rotation moves an off-axis voxel as hand-computed") {
@@ -234,4 +358,36 @@ TEST_CASE("voxel_raster: real htnk hull renders deterministically") {
     // screen). Re-pin ONLY with a new visual check. Observed sprite: w=61 h=43
     // opaque=1038 anchor=(27,24).
     CHECK(fnv1a(s1.rgba) == 1209756769u);  // 0x481b6c61
+}
+
+TEST_CASE("voxel_raster: reordered named HVA sections preserve model and shadow") {
+    auto model=single_voxel_model(100,0);
+    model.sections[0].name="BODY";
+    model.sections.push_back(model.sections[0]);
+    model.sections[1].name="ENGINE";model.sections[1].voxels[0].color=160;
+    auto h=identity_hva();h.section_names={"BODY","ENGINE"};
+    auto moved=h.frames[0][0];moved.transform[0][3]=4;moved.transform[2][3]=2;
+    h.frames[0].push_back(moved);
+    auto reversed=h;
+    std::swap(reversed.section_names[0],reversed.section_names[1]);
+    std::swap(reversed.frames[0][0],reversed.frames[0][1]);
+    const auto a=ra2engine::rasterize_model(model,h,0,identity_vpl(),gray_pal());
+    const auto b=ra2engine::rasterize_model(model,reversed,0,identity_vpl(),gray_pal());
+    CHECK(a.w==b.w);CHECK(a.h==b.h);CHECK(a.anchor_x==b.anchor_x);CHECK(a.anchor_y==b.anchor_y);CHECK(a.rgba==b.rgba);
+    const auto sa=ra2engine::rasterize_shadow(model,h,0,128);
+    const auto sb=ra2engine::rasterize_shadow(model,reversed,0,128);
+    CHECK(sa.w==sb.w);CHECK(sa.h==sb.h);CHECK(sa.rgba==sb.rgba);
+}
+
+TEST_CASE("terrain tilt: movement blends remain rigid and retain endpoint orientation") {
+ for(int a=0;a<=16;++a)for(int b=0;b<=16;++b) {
+  CHECK(ra2engine::terrain_tilt_transition(a,b,0)==a);
+  CHECK(ra2engine::terrain_tilt_transition(a,b,1)==b);
+  for(int step=1;step<8;++step) {
+   const auto t=ra2engine::terrain_tilt(ra2engine::terrain_tilt_transition(a,b,step/8.0));
+   const auto p=t.apply(3,4,12),q=t.inverse(p[0],p[1],p[2]);
+   CHECK(p[0]*p[0]+p[1]*p[1]+p[2]*p[2]==doctest::Approx(169));
+   CHECK(q[0]==doctest::Approx(3));CHECK(q[1]==doctest::Approx(4));CHECK(q[2]==doctest::Approx(12));
+  }
+ }
 }

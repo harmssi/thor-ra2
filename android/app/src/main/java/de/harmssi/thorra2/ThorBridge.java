@@ -30,6 +30,8 @@ final class ThorBridge {
     static final int ST_AVAILABLE = 0, ST_BUILDING = 1, ST_ON_HOLD = 2, ST_READY = 3, ST_DISABLED = 4;
 
     static native void setDualScreen(boolean on);
+    /** Launcher mode: false = "Red Alert 2" (Yuri hidden in the skirmish lobby). */
+    static native void setYuriAllowed(boolean on);
     /** Game picture zoom in percent (100 = default canvas); applied live by the engine. */
     static native void setZoom(int percent);
     static native void pushCommand(int type, int a, int b, int c);
@@ -42,7 +44,7 @@ final class ThorBridge {
     /** Item name from the player's game text ("" until the engine has answered). */
     static native String itemName(int key);
 
-    static final String PREFS = "thor", PREF_ZOOM = "zoom";
+    static final String PREFS = "thor", PREF_ZOOM = "zoom", PREF_MODE = "mode";
 
     static void zoom(int percent) {
         try {

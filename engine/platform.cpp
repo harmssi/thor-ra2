@@ -1,6 +1,7 @@
 #include "platform.hpp"
 #include <algorithm>
 #include "touch_gestures.hpp"
+#include "diagnostics.hpp"
 
 #include <SDL.h>
 #include <cmath>
@@ -218,6 +219,13 @@ Platform Platform::create(const char* title, int w, int h, bool hidden) {
     //    drawn. Setting the logical size keeps rendering AND input in the
     //    same fixed coordinate space on both platforms.
     SDL_RenderSetLogicalSize(renderer, w, h);
+    SDL_RendererInfo renderer_info{};
+    int output_w=0,output_h=0;
+    SDL_GetRendererOutputSize(renderer,&output_w,&output_h);
+    if (SDL_GetRendererInfo(renderer,&renderer_info)==0)
+        diag::note("RENDERER backend=%s flags=%u output=%dx%d logical=%dx%d max_texture=%dx%d",
+            renderer_info.name ? renderer_info.name : "unknown",renderer_info.flags,output_w,output_h,w,h,
+            renderer_info.max_texture_width,renderer_info.max_texture_height);
 
     Platform p;
     p.p_ = new Impl{window, renderer, w, h, TouchGestures{}};
@@ -264,6 +272,7 @@ void Platform::set_fullscreen(bool on) {
 
 void Platform::set_logical_size(int w, int h) {
     if (!p_ || w <= 0 || h <= 0 || (w == p_->w && h == p_->h)) return;
+    p_->touch.rescale(p_->w,p_->h,w,h);
     p_->w = w;
     p_->h = h;
     SDL_RenderSetLogicalSize(p_->renderer, w, h);
@@ -478,9 +487,9 @@ bool Platform::poll(InputEvent& ev) {
             ev.ctrl = (SDL_GetModState() & KMOD_CTRL) != 0;
             ev.alt = (SDL_GetModState() & KMOD_ALT) != 0;
             break;
-        // G-70: fingers go through the gesture layer (tap = left click, drag =
-        // band box, long-press / two-finger tap = right click, two-finger drag =
-        // pan); the produced events are drained at the top of poll().
+        // Fingers use TouchGestures: tap selects/orders, drag pans, hold then
+        // drag selects a box; two-finger tap cancels and two-finger drag pans.
+        // The produced events are drained at the top of poll().
         case SDL_FINGERDOWN:
             p_->last_touch = true;
             p_->touch.finger_down(e.tfinger.fingerId, static_cast<int>(e.tfinger.x * p_->w),

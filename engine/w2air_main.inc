@@ -189,6 +189,22 @@ ra2engine::SwParams resolve_sw_params(const Rules& rules) {
     p.sov_para_num = static_cast<int>(gd("SovParaDropNum", 9.0));
     p.paradrop_radius = static_cast<int>(gd("ParadropRadius", 1024.0));
     p.parachute_fall = std::max(1, static_cast<int>(std::lround(-gd("ParachuteMaxFallRate", -5.0))));
+    {   // Yuri superweapons (see SwParams)
+        const std::string dwh = gs("DominatorWarhead", "DominatorWH");
+        p.dom_damage = static_cast<int>(gd("DominatorDamage", 1000.0));
+        p.dom_spread = rules.section_double(dwh, "CellSpread", 7.0);
+        p.dom_pmax = rules.section_double(dwh, "PercentAtMax", 0.2);
+        p.dom_verses = w2_verses11(rules, dwh);
+        p.dom_capture_range = std::max(0, static_cast<int>(gd("DominatorCaptureRange", 1.0)));
+        p.mut_explosion = rules.section_flag("General", "MutateExplosion", true);
+        const std::string mwh = rules.section_string("SpecialWeapons", p.mut_explosion ? "MutateExplosionWarhead"
+                                                                                       : "MutateWarhead",
+                                                     p.mut_explosion ? "MutateExplosion" : "Mutate");
+        p.mut_spread = p.mut_explosion ? rules.section_double(mwh, "CellSpread", 5.0) : 1.5;   // 1.5: the 3x3 block
+        p.mut_verses = w2_verses11(rules, mwh);
+        p.mut_inf_death = static_cast<int>(rules.section_double(mwh, "InfDeath", 9.0));
+        p.mut_infantry = gs("AnimToInfantry", "BRUTE");
+    }
     p.cloak_delay_frames = std::max(1, static_cast<int>(gd("CloakDelay", 0.02) * 900.0));
     p.ship_sinking_weight = gd("ShipSinkingWeight", 3.0);
     p.reload_frames = std::max(1, static_cast<int>(gd("ReloadRate", 0.3) * 900.0));

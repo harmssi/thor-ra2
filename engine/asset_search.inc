@@ -43,7 +43,23 @@ inline std::string asset_find_shp(const std::vector<std::string>& bases, const s
 // building (NABNKR, NAINDP) stays art-absent and therefore unbuildable, as
 // before; map objects and dressing take the YR tail too.
 inline bool asset_building_shp(const std::string& image, ra2assets::ShpFile& out, bool ra2_only = false) {
-    return !asset_find_shp(ra2assets::art_base_names(image, art_chain().letter), {".shp"}, out, ra2_only).empty();
+    auto bases = ra2assets::art_base_names(image, art_chain().letter);
+    std::string literal = image;
+    for (char& c : literal) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    if (std::find(bases.begin(),bases.end(),literal) == bases.end()) bases.push_back(literal);
+    // GAFWLL was an unused French-wall placeholder in RA2; YR replaces it
+    // with Yuri's Citadel wall under the same generic filename. This explicit
+    // override must precede the classic-only roster probe as well.
+    if(literal=="gafwll")for(const auto& base:bases) {
+        const ra2assets::MixFile* owner=nullptr;std::string where;
+        const auto* e=asset_fs().find(base+".shp",&owner,&where,false,true);
+        // Try every YR candidate before accepting a classic theater fallback.
+        if(e && where.rfind("ra2md.mix",0)==0) {
+            try {out=ra2assets::ShpFile::load(owner->read(*e));return true;}
+            catch(const std::exception&) {}
+        }
+    }
+    return !asset_find_shp(bases, {".shp"}, out, ra2_only).empty();
 }
 
 // Map-dressing / anim art: `Theater=yes` names take the theater extension
@@ -72,5 +88,26 @@ inline std::shared_ptr<ra2assets::Palette> asset_art_palette(const std::string& 
         return std::make_shared<ra2assets::Palette>(ra2assets::Palette::load(raw.data(), raw.size()));
     } catch (const std::exception&) {
         return nullptr;
+    }
+}
+
+// Missing legacy cameos may live in patch or Yuri archives. Keep the legacy
+// hit unchanged, then use the shared ordered search for absent icons.
+inline bool asset_cameo_fallback(const std::string& name, ra2assets::ShpFile& out) {
+    std::string file = name;
+    for (char& c : file) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    if (file.size() < 4 || file.substr(file.size()-4) != ".shp") file += ".shp";
+    std::vector<uint8_t> raw;
+    if (!asset_read(file, raw)) {
+        std::cerr << "[cameo] missing " << file << " in imported archives\n";
+        return false;
+    }
+    try {
+        out = ra2assets::ShpFile::load(raw);
+        std::cerr << "[cameo] fallback " << file << " from " << asset_fs().where(file) << "\n";
+        return out.count() > 0;
+    } catch (const std::exception& ex) {
+        std::cerr << "[cameo] invalid " << file << ": " << ex.what() << "\n";
+        return false;
     }
 }

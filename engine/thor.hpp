@@ -65,6 +65,10 @@ bool dual();                       // deck on a second screen: hide the sidebar
 void set_dual(bool on);
 int zoom();                        // game picture zoom in percent (100 = the default canvas)
 void set_zoom(int percent);
+// Launcher mode: "Red Alert 2" hides Yuri in the skirmish lobby, "Yuri's
+// Revenge" offers him. The engine always plays YR rules (docs/gap/REMAINING.md U-1).
+bool yuri_allowed();                 // true unless the Thor launcher chose "Red Alert 2"
+void set_yuri_allowed(bool on);
 bool pop_command(ThorCommand& out);   // game thread
 void push_command(const ThorCommand& c);
 

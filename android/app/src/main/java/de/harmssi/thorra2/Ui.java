@@ -13,39 +13,49 @@ import android.graphics.Typeface;
  *
  * Near-black surfaces, quiet panels with 1-px lines, generous spacing, Inter for UI,
  * UPPERCASE micro labels with wide tracking, JetBrains Mono for numbers, 12/8 px radii,
- * thin gradient progress bars. Accent follows the faction: amber (Allies) or red (Soviets).
+ * thin gradient progress bars. Accent follows the faction: blue (Allies), red (Soviets),
+ * violet (Yuri); amber is the brand accent outside a match. The one source of these
+ * tokens for the deck and the launcher; documented in docs/THOR-DESIGN.md.
  */
-final class Ui {
+public final class Ui {
     private Ui() {}
 
     // Surfaces
-    static final int BG = 0xFF08090B;
-    static final int BG_2 = 0xFF0D0F12;
-    static final int PANEL = 0xFF121418;
-    static final int PANEL_2 = 0xFF181B20;
-    static final int LINE = 0xFF252931;
-    static final int LINE_2 = 0xFF323844;
+    public static final int BG = 0xFF08090B;
+    public static final int BG_2 = 0xFF0D0F12;
+    public static final int PANEL = 0xFF121418;
+    public static final int PANEL_2 = 0xFF181B20;
+    public static final int LINE = 0xFF252931;
+    public static final int LINE_2 = 0xFF323844;
 
     // Text
-    static final int TEXT = 0xFFF2F2EF;
-    static final int TEXT_2 = 0xFFA7ABB3;
-    static final int TEXT_3 = 0xFF6A707B;
+    public static final int TEXT = 0xFFF2F2EF;
+    public static final int TEXT_2 = 0xFFA7ABB3;
+    public static final int TEXT_3 = 0xFF6A707B;
 
     // Accents
-    static final int AMBER = 0xFFE8B04A;
-    static final int AMBER_2 = 0xFFF3D27E;
-    static final int RED = 0xFFE5484D;
-    static final int RED_2 = 0xFFF08A6E;
-    static final int GREEN = 0xFF4CC38A;
-    static final int CORAL = 0xFFD8806A;
+    public static final int AMBER = 0xFFE8B04A;
+    public static final int AMBER_2 = 0xFFF3D27E;
+    public static final int RED = 0xFFE5484D;
+    public static final int RED_2 = 0xFFF08A6E;
+    public static final int BLUE = 0xFF4C9EEB;
+    public static final int BLUE_2 = 0xFF9CCBF5;
+    public static final int GREEN = 0xFF4CC38A;
+    public static final int CORAL = 0xFFD8806A;
 
     static final float LABEL_TRACKING = 0.32f; // em
     static final float RADIUS = 12f;
     static final float RADIUS_SM = 8f;
+    static final float GRID = 40f;          // tactical grid step (1240-wide layout units)
+    static final float MARGIN = 28f;        // outer margin
+    static final float GAP = 12f;           // gap between tiles
+    static final float FOCUS_STROKE = 3f;   // controller focus ring
+    static final long FLASH_MS = 180;       // tap feedback
+    static final long SWEEP_MS = 6000;      // one radar-sweep turn (launcher title)
 
     private static Typeface inter, interMedium, interSemi, interBold, mono, monoBold;
 
-    static void init(Context ctx) {
+    public static void init(Context ctx) {
         if (inter != null) {
             return;
         }
@@ -65,22 +75,71 @@ final class Ui {
         }
     }
 
-    static Typeface inter() { return inter; }
-    static Typeface interMedium() { return interMedium; }
-    static Typeface interSemi() { return interSemi; }
-    static Typeface interBold() { return interBold; }
-    static Typeface mono() { return mono; }
-    static Typeface monoBold() { return monoBold; }
+    public static Typeface inter() { return inter; }
+    public static Typeface interMedium() { return interMedium; }
+    public static Typeface interSemi() { return interSemi; }
+    public static Typeface interBold() { return interBold; }
+    public static Typeface mono() { return mono; }
+    public static Typeface monoBold() { return monoBold; }
 
-    static int accent(int faction) {
-        return faction == 1 ? RED : AMBER;
+    // Thor RA2: faction 0 Allies, 1 Soviets, 2 Yuri; BRAND outside a match.
+    public static final int PURPLE = 0xFFB46CFF, PURPLE_2 = 0xFFD9B8FF;
+    public static final int FACTION_BRAND = -1;
+
+    public static int accent(int faction) {
+        return faction == 2 ? PURPLE : faction == 1 ? RED : faction == 0 ? BLUE : AMBER;
     }
 
-    static int accent2(int faction) {
-        return faction == 1 ? RED_2 : AMBER_2;
+    public static int accent2(int faction) {
+        return faction == 2 ? PURPLE_2 : faction == 1 ? RED_2 : faction == 0 ? BLUE_2 : AMBER_2;
     }
 
-    static int alpha(int color, float a) {
+    /** Controller focus: an accent ring just outside the tile. */
+    static void focusRing(Canvas c, RectF r, float radius, int accent, float scale, Paint scratch) {
+        float o = 4 * scale;
+        scratch.setShader(null);
+        scratch.setStyle(Paint.Style.STROKE);
+        scratch.setStrokeWidth(FOCUS_STROKE * scale);
+        scratch.setColor(accent);
+        c.drawRoundRect(new RectF(r.left - o, r.top - o, r.right + o, r.bottom + o), radius + o, radius + o, scratch);
+        scratch.setStyle(Paint.Style.FILL);
+    }
+
+    /** Own emblem: a hexagon frame with a stacked chevron (no game artwork). */
+    static void emblem(Canvas c, float cx, float cy, float r, int color, float scale, Paint paint) {
+        android.graphics.Path hex = new android.graphics.Path();
+        for (int i = 0; i < 6; i++) {
+            double a = Math.toRadians(60 * i - 90);
+            float x = cx + (float) Math.cos(a) * r, y = cy + (float) Math.sin(a) * r;
+            if (i == 0) {
+                hex.moveTo(x, y);
+            } else {
+                hex.lineTo(x, y);
+            }
+        }
+        hex.close();
+        paint.setShader(null);
+        paint.setStyle(Paint.Style.STROKE);
+        paint.setStrokeWidth(3 * scale);
+        paint.setColor(alpha(color, 0.55f));
+        c.drawPath(hex, paint);
+        paint.setStyle(Paint.Style.FILL);
+        for (int k = 0; k < 2; k++) {
+            float oy = cy - r * 0.22f + k * r * 0.42f;
+            android.graphics.Path ch = new android.graphics.Path();
+            ch.moveTo(cx - r * 0.55f, oy);
+            ch.lineTo(cx, oy + r * 0.34f);
+            ch.lineTo(cx + r * 0.55f, oy);
+            ch.lineTo(cx + r * 0.55f, oy + r * 0.17f);
+            ch.lineTo(cx, oy + r * 0.51f);
+            ch.lineTo(cx - r * 0.55f, oy + r * 0.17f);
+            ch.close();
+            paint.setColor(k == 0 ? color : alpha(color, 0.55f));
+            c.drawPath(ch, paint);
+        }
+    }
+
+    public static int alpha(int color, float a) {
         return (color & 0x00FFFFFF) | (Math.round(a * 255) << 24);
     }
 

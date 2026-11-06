@@ -1,4 +1,5 @@
 #pragma once
+#include "gattling.hpp"
 #include <array>
 #include <cstdint>
 #include <map>
@@ -169,6 +170,7 @@ struct Unit {
     // Facings live in the original's 16-bit space [0, 65536); 32768 faces
     // screen-South like the infantry spawn (docs/re/voxel-render.md §2/§5).
     bool is_vehicle = false;
+    int bunker_exit_host = -1; // foundation passage only while physically exiting
     double body_facing = 32768.0;
     double turret_facing = 32768.0;
     double rot_u16_per_sec = 0.0;  // ROT * kRotU16PerRotPerSec
@@ -379,7 +381,7 @@ struct Unit {
     bool crushable = false;          // Crushable=yes (infantry)
     // --- gF MCV deploy [RE: docs/re/mcv-deploy.md] --- inert defaults.
     int deploys_into = -1;           // DeploysInto= building roster index (-1 none)
-    int deploy_mission = 0;          // 0 none, 1 turning to DeployFacing, 2 driving to a spot
+    int deploy_mission = 0;          // 0 none; 1/2 manual turn/walk; 3/4 automatic quiet turn/walk
     int deploy_goal_x = 0, deploy_goal_y = 0;   // mission 2 destination
     bool deployed_away = false;      // consumed by a deploy (not a death)
     // --- G16 world depth (agent G, world_depth.cpp) [RE: docs/re/world-depth.md] ---
@@ -414,6 +416,7 @@ struct Unit {
     // percentage, Drive/Ship track, hover ramp, blocked-move timers (save v35).
     UnitLoco loco;
     UnitW7 w7;                       // wave-7 fix (units): unit_w7.hpp (save v35)
+    Gattling gattling;
 };
 // G16: the cargo_of sentinel of a garrisoned infantry (never a unit index).
 constexpr int kGarrisonCargo = 0x3FFFFFFF;
@@ -1060,6 +1063,11 @@ public:
     // check walkable() and unit_at_cell() first; seeding two units onto one
     // cell silently breaks the one-unit-per-cell invariant.
     Unit& add_combat_unit(int cell_x, int cell_y, int house, const UnitCombat& c);
+    void step_yuri_workers(bool relocate = true);
+    void release_unit_mind_control(int controller);
+    void prepare_skirmish_mind_control();
+    void resolve_skirmish_mind_control();
+    bool try_building_mind_control(int building, int victim, int slot = 0);
 
     // Registers (or replaces) the animation sequence used for Unit::image ==
     // `image`; anim_for_image falls back to default_anim() for any image
@@ -1940,7 +1948,7 @@ public:
     void step_projectiles_frame();
     // Turn one step_combat launch into a Projectile (muzzle via FLH, target
     // coords, compute_launch incl. scatter draws). Refused shots log an event.
-    void launch_projectile(int attacker, int target_unit, int target_building);
+    void launch_projectile(int attacker, int target_unit, int target_building, int cell_x = -1, int cell_y = -1);
     // Detonate `p` at its position: Explode snap, then the EXISTING damage layer
     // (apply_spread_damage / deliver_unit_hit / deliver_building_hit).
     void detonate_projectile(Projectile& p, int victim);
@@ -2320,6 +2328,7 @@ public:
         int target_building = -1;
         int slot = 0;              // weapon slot fired (0 primary / 1 secondary)
         std::string weapon;        // weapon id when known (defenses), else ""
+        int cell_x = -1, cell_y = -1; // explicit ground-fire visual endpoint
     };
     std::vector<FireEvent> take_fire_events();
     // W7-12-07 [RE: BulletClass shrapnel FUN_0046a230 @0x46a7cc/0x46aca1 --
@@ -2417,6 +2426,11 @@ public:
     // Order unit `idx` to deploy (any house: player 'D', AI, campaign script 9).
     // false = not a deployer / dead / no legal spot anywhere in the ring.
     bool order_deploy_mcv(int idx);
+    bool order_deploy_mcv_auto(int idx);
+    bool can_pack_conyard(int bi) const;
+    bool packing_conyard(int bi) const;
+    bool order_pack_conyard(int bi,int house);
+    bool order_pack_conyard_move(int bi,int house,int x,int y);
     bool is_mcv(int idx) const;
     // Would the unit's DeploysInto building be legal with the MCV at (x, y)?
     // (the MCV itself does not block its own spot). Out: foundation origin.
@@ -2427,9 +2441,12 @@ public:
     // UndeploysInto [RE: repair-sell.md §B6]: the unit a ConstructionYard packs
     // back into when sold by a human in a skirmish session with MCVRedeploys.
     void set_undeploy_unit(int btype, const UnitCombat& c);
+    bool can_pack_slave_miner(int b_idx) const;
+    bool order_pack_slave_miner(int b_idx, int house);
     void set_mcv_redeploys(bool on) { mcv_redeploys_ = on; }
     bool mcv_redeploys() const { return mcv_redeploys_; }
     void set_skirmish_session(bool on) { skirmish_session_ = on; }
+    bool skirmish_session() const { return skirmish_session_; }
     // Net L0 session seed [RE: InitRandom FUN_0052F960 seeds Scenario->Random
     // (+0x218) and the global randomizer 0x885B08 from the session Seed
     // DAT_00A8DCFC; docs/gap/net/01-original-protocol.md "Seed"]. Every sim RNG
@@ -2467,6 +2484,10 @@ public:
     bool can_occupy(int unit_idx, int b_idx) const;          // BuildingClass::CanBeOccupiedBy
     bool garrison_red(const Building& b) const;              // W7-08-09: hp ratio <= ConditionRed
     bool garrison_attack(int issuer, int b_idx, int unit_target, int bld_target);   // W7-02-10
+    bool building_can_attack(int bi) const;
+    bool order_building_attack(int issuer, int bi, int unit, int building, int x, int y, bool force);
+    bool stop_building_attack(int issuer, int bi);
+    void step_ordered_building_fire(int bi, double dt);
     void order_occupy(int unit_idx, int b_idx);              // walk adjacent, then enter
     int group_occupy(int issuer, const std::vector<int>& ids, int b_idx);   // returns #ordered
     int group_occupy_count(int issuer, const std::vector<int>& ids, int b_idx) const;   // the same, dry run
@@ -2892,6 +2913,8 @@ private:
     void an_chrono(int house, int sx, int sy, int dx, int dy);
     void an_iron_curtain(int house, int cx, int cy);
     int an_spawn(const std::string& id, int house, int x, int y);
+    void an_psychic_dominator(int house, int cx, int cy);   // Thor RA2 (world_sw.cpp)
+    void an_genetic_mutator(int house, int cx, int cy);
     void an_damage_unit(int idx, int dmg, int attacker, int inf_death = -1);
     void an_damage_building(int b, int dmg);
     void an_area_damage(int house, double cx, double cy, int damage, double spread, double pmax,
@@ -3197,6 +3220,7 @@ private:
     std::uint32_t session_seed_ = 0;           // Net L0: the one session seed (saved, v34)
     bool try_undeploy(int b_idx);              // called by complete_sell
     void finish_deploy(int idx);
+    bool clear_slave_deploy_blockers(int idx);
 
     // --- Wave-5 abilities (world_w5.cpp) ---
     WorldW5 w5_;

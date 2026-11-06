@@ -11,6 +11,10 @@
 #include "group_move.hpp"   // nearest_free_cells
 #include "veterancy.hpp"    // is_elite
 #include "world.hpp"
+#include "diagnostics.hpp"
+#include "weapon_unit.hpp"
+#include "slave_passage.hpp"
+#include "building_transition.hpp"
 
 namespace ra2engine {
 
@@ -42,6 +46,11 @@ bool collapse_candidate(const Unit& u) {
 bool jumpjet_type(const Unit& u) {
     return u.loco.t.kind == static_cast<int>(LocoKind::Jumpjet) || (u.is_aircraft && !u.an.t.fixed_wing);
 }
+void reset_bunker_drive(Unit& u) {
+    const auto type=u.loco.t;
+    u.loco=UnitLoco{};u.loco.t=type;
+    u.wait_time=0;
+}
 }  // namespace
 
 int World::neutral_house() const {
@@ -62,16 +71,20 @@ bool World::can_occupy(int ui, int bi) const {
     if (bi < 0 || bi >= static_cast<int>(buildings_.size())) return false;
     const Unit& u = units_[ui];
     const Building& b = buildings_[bi];
-    if (!u.alive || u.die_time >= 0.0 || !u.occupier || u.is_vehicle) return false;
+    if (!u.alive || u.die_time >= 0.0 || u.cargo_of >= 0 || u.is_aircraft || u.is_naval) return false;
     if (!b.alive || b.state != Building::State::Idle || b.selling) return false;
     if (b.type < 0 || b.type >= static_cast<int>(btypes().size())) return false;
     const BuildingTypeDef& t = btypes()[b.type];
     if (!t.can_be_occupied) return false;
+    if (t.tank_bunker) {
+        if (!u.is_vehicle || !u.w7.t.bunkerable || b.house != u.house) return false;
+        if(b.bunker_exit_left>=0 || std::any_of(units_.begin(),units_.end(),[&](const Unit& v){return v.alive && v.bunker_exit_host==bi;}))return false;
+    } else if (!u.occupier || u.is_vehicle) return false;
     const bool owner_ok = b.house == u.house || !house_combatant(b.house) || passive_house(b.house);
     // W7-08-09 [RE: CanBeOccupiedBy FUN_00457CE0]: no entry at or below
     // ConditionRed (Rules+0x1708).
     if (garrison_red(b)) return false;
-    return owner_ok && static_cast<int>(b.occupants.size()) != t.max_occupants;
+    return owner_ok && static_cast<int>(b.occupants.size()) < t.max_occupants;
 }
 
 // W7-08-09 [RE: FUN_004581F0 / FUN_00457CE0]: health ratio <= ConditionRed.
@@ -109,6 +122,11 @@ void World::order_occupy(int ui, int bi) {
     u.attack_cell_x = u.attack_cell_y = -1;
     u.occupy_target = bi;
     const Building& b = buildings_[bi];
+    if(btypes()[b.type].tank_bunker) {
+        const auto dock=bunker_docking_cell(b.cx,b.cy,b.fw,b.fh);
+        order_unit_move(ui,dock[0],dock[1]);
+        return;
+    }
     if (cheb_to_foundation(b, u.cell_x, u.cell_y) <= 1) return;   // enters next step
     int nx = b.cx, ny = b.cy, best = -1;
     for (const Cellxy& c : foundation_cells(b.cx, b.cy, b.fw, b.fh)) {
@@ -163,6 +181,7 @@ int World::group_occupy(int issuer, const std::vector<int>& ids, int bi) {
 void World::occupy_now(int ui, int bi) {
     Unit& u = units_[ui];
     Building& b = buildings_[bi];
+    if(btypes()[b.type].tank_bunker)reset_bunker_drive(u);
     occ_.release_all_of(ui, -1, -1);
     u.path.clear();
     u.path_idx = 0;
@@ -176,6 +195,7 @@ void World::occupy_now(int ui, int bi) {
     note_entered(EnteredEvent::Occupy, ui, bi, u.house, false);   // W2-CA-01
     if (b.occupants.size() == 1) garrison_events_.push_back({GarrisonEvent::Garrisoned, bi, u.house});
     sync_garrison_owner(bi);
+    diag::note("GARRISON entered building=%d unit=%d house=%d owner=%d occupants=%zu",bi,ui,u.house,b.house,b.occupants.size());
 }
 
 // FUN_004581F0 (called each tick from FUN_0043FAA0 for CanBeOccupied types):
@@ -183,13 +203,19 @@ void World::occupy_now(int ui, int bi) {
 // EVA for the old owner); occupied and neutral -> the FIRST occupant's house.
 void World::sync_garrison_owner(int bi) {
     Building& b = buildings_[bi];
+    if (b.type >= 0 && b.type < static_cast<int>(btypes().size())) {
+        const auto& type=btypes()[b.type];
+        // Constructed bunkers retain their owner when empty. Only civilian
+        // urban-combat garrisons adopt/abandon ownership with their occupants.
+        if (type.tank_bunker || type.id=="NABNKR") return;
+    }
     const int neutral = neutral_house();
     if (neutral < 0) return;
     if (b.occupants.empty() && b.house != neutral) {
         garrison_events_.push_back({GarrisonEvent::Abandoned, bi, b.house});
         b.house = neutral;
         b.garrison_target = -1;
-    } else if (!b.occupants.empty() && b.house == neutral) {
+    } else if (!b.occupants.empty() && (!house_combatant(b.house) || passive_house(b.house))) {
         b.house = units_[b.occupants.front()].house;
     }
 }
@@ -216,8 +242,15 @@ void World::unload_occupants(int bi, bool place_inside) {
     Building& b = buildings_[bi];
     b.firing_occupant = 0;
     if (b.occupants.empty()) return;
+    diag::note("GARRISON unload-request building=%d house=%d occupants=%zu inside=%d",bi,b.house,b.occupants.size(),place_inside);
     const int x0 = b.cx, y0 = b.cy, w = b.fw, h = b.fh;
     const int lead = b.occupants.front();
+    const bool physical_exit=btypes()[b.type].tank_bunker && b.alive &&
+        b.state==Building::State::Idle && !b.selling && !place_inside && units_[lead].house==b.house;
+    if(physical_exit && b.bunker_exit_left!=0) {
+        if(b.bunker_exit_left<0)b.bunker_exit_left=18; // retail reverse hull: 9 frames at delay 2
+        return;
+    }
     PathTerrain pterr;
     std::vector<int> pgates;
     const PathTerrain* ptp = terrain_for(units_[static_cast<std::size_t>(lead)], pterr, pgates);
@@ -240,9 +273,23 @@ void World::unload_occupants(int bi, bool place_inside) {
     int exit_layer = 0;
     for (const Cellxy& c : ring) {
         const int l = enter(lead, x0, y0, 0, c.x, c.y);
-        if (l >= 0) { exit = c; exit_layer = l; break; }
+        if (l >= 0) {
+            if(physical_exit) {
+                Unit probe=units_[lead];probe.cargo_of=-1;probe.garrison_of=-1;probe.bunker_exit_host=bi;
+                PathTerrain route_terrain;std::vector<int> openings;
+                const auto* terrain=terrain_for(probe,route_terrain,openings);
+                const auto dock=bunker_docking_cell(b.cx,b.cy,b.fw,b.fh);
+                const auto route=find_path_bounded_t(grid_for(probe.movement_domain),grid_w_,grid_h_,
+                    {dock[0],dock[1]},c,2048,nullptr,terrain);
+                if(route.size()<2)continue;
+            }
+            exit = c; exit_layer = l; break;
+        }
     }
     const int house = b.house;
+    // A blocked player unload keeps a tank safely inside its bunker.
+    if (exit.x < 0 && b.alive && b.state == Building::State::Idle && !b.selling &&
+        b.type >= 0 && btypes()[b.type].tank_bunker) return;
     std::vector<int> occ_list = b.occupants;
     b.occupants.clear();
     if (exit.x < 0 && !place_inside) {
@@ -265,6 +312,7 @@ void World::unload_occupants(int bi, bool place_inside) {
     if (inside) exit = Cellxy{x0 + w - 1, y0 + h - 1};
     auto put = [&](int ui, Cellxy c, int layer) {
         Unit& u = units_[static_cast<std::size_t>(ui)];
+        if(btypes()[b.type].tank_bunker)reset_bunker_drive(u);
         u.cell_x = c.x;
         u.cell_y = c.y;
         u.fx = c.x;
@@ -275,6 +323,16 @@ void World::unload_occupants(int bi, bool place_inside) {
         if (map_) if (const ra2assets::MapCell* mc = map_->at(c.x, c.y)) u.level = mc->level;
         occ_.set(c.x, c.y, ui);
     };
+    if(physical_exit && exit.x>=0) {
+        const int ui=lead;
+        b.occupants.clear();b.bunker_exit_left=-1;
+        auto& u=units_[ui];u.garrison_of=-1;u.cargo_of=-1;u.bunker_exit_host=bi;
+        const auto dock=bunker_docking_cell(b.cx,b.cy,b.fw,b.fh);
+        put(ui,{dock[0],dock[1]},0);
+        order_unit_move(ui,exit.x,exit.y);
+        garrison_events_.push_back({GarrisonEvent::Unloaded,bi,house});
+        return;
+    }
     // The unlimbo loop runs from the LAST occupant down (0x458088: index
     // count-1 .. 0).
     for (auto it = occ_list.rbegin(); it != occ_list.rend(); ++it) {
@@ -306,7 +364,9 @@ void World::unload_occupants(int bi, bool place_inside) {
         put(ui, got, got_layer);
     }
     garrison_events_.push_back({GarrisonEvent::Unloaded, bi, house});
+    b.bunker_exit_left=-1;
     sync_garrison_owner(bi);
+    diag::note("GARRISON unloaded building=%d owner=%d count=%zu exit=%d,%d",bi,b.house,occ_list.size(),exit.x,exit.y);
 }
 
 Cellxy World::nearest_exit_from_host(const Unit& u, int hx, int hy, int hlayer, int* layer) const {
@@ -375,6 +435,10 @@ bool World::garrison_firing(int bi) const {   // vtable +0x400 = FUN_00458DC0
 // + OccupyWeaponRange.
 double World::garrison_range(int bi) const {
     const Building& b = buildings_[bi];
+    if (btypes()[b.type].tank_bunker && !b.occupants.empty()) {
+        const Unit& u=units_[b.occupants.front()];
+        return u.occupy_w.range+btypes()[b.type].bunker_range;
+    }
     return std::min(b.fw, b.fh) / 2 + depth_rules_.occupy_weapon_range;
 }
 
@@ -389,26 +453,38 @@ void World::step_garrison_combat(double dt) {
     const int nu = static_cast<int>(units_.size());
     for (int bi = 0; bi < nb; ++bi) {
         Building& b = buildings_[bi];
-        if (!b.alive || b.state != Building::State::Idle || !garrison_firing(bi)) continue;
+        if (!b.alive || b.state != Building::State::Idle || !garrison_firing(bi) || b.attack_order_kind) continue;
         if (b.garrison_rearm_frames > 0) --b.garrison_rearm_frames;   // Net L0: whole frames
         b.def_fire_flash = std::max(0.0, b.def_fire_flash - dt);
         if (b.firing_occupant < 0 || b.firing_occupant >= static_cast<int>(b.occupants.size()))
             b.firing_occupant = 0;
         // BuildingClass::GetWeapon (FUN_004526E0): the FiringOccupantIndex
         // occupant's OccupyWeapon (EliteOccupyWeapon when that occupant is elite).
-        const Unit& occ = units_[b.occupants[b.firing_occupant]];
+        Unit& occ = units_[b.occupants[b.firing_occupant]];
         const bool elite = occ.vet.recv ? is_elite(occ.vet.veterancy) : occ.veteran_rank >= 2;
-        const WeaponSlot& w = (elite && occ.occupy_w_elite.valid) ? occ.occupy_w_elite : occ.occupy_w;
+        WeaponSlot w = (elite && occ.occupy_w_elite.valid) ? occ.occupy_w_elite : occ.occupy_w;
+        const BuildingTypeDef& type=btypes()[b.type];
+        if (type.tank_bunker && occ.house!=b.house) continue;
+        if(type.tank_bunker && occ.gattling.enabled()) {
+            occ.gattling.step(b.garrison_target>=0 || b.w7.garrison_target_building>=0,elite);
+            w=occ.gattling.weapon(0,elite);
+        }
+        auto bunker_slot = [&](const Unit& target) {
+            const int slot=unit_weapon_for_unit(occ,target);
+            if(occ.gattling.enabled() && slot>=0) return occ.gattling.weapon(slot,elite);
+            return slot==1 ? secondary_view(occ) : slot==0 ?
+                ((elite && occ.occupy_w_elite.valid) ? occ.occupy_w_elite : occ.occupy_w) : WeaponSlot{};
+        };
         if (!w.valid) continue;
         const double range = garrison_range(bi);
         const double cx = b.cx + (b.fw - 1) / 2.0, cy = b.cy + (b.fh - 1) / 2.0;
         auto engageable = [&](int j) {
             if (j < 0 || j >= nu) return false;
             const Unit& v = units_[j];
-            if (!v.alive || v.die_time >= 0.0 || v.cargo_of >= 0) return false;
+            if (!v.alive || v.die_time >= 0.0 || !unit_combat_exposed(v)) return false;
             if (!is_enemy(b.house, v.house) || disguise_fools(b.house, v)) return false;   // W7-01-02
             if (!v.seen_by_house(b.house)) return false;   // fv7c: 32-bit house mask
-            if (!slot_can_target(w, v.is_aircraft && v.altitude > 0.0, v.armor_ix)) return false;
+            if (!slot_can_target(type.tank_bunker ? bunker_slot(v) : w, unit_airborne(v), v.armor_ix)) return false;
             return om::hypot(v.fx - cx, v.fy - cy) <= range + 0.5;
         };
         // W7-02-10: a structure target (an order, or the defence rule's
@@ -456,21 +532,29 @@ void World::step_garrison_combat(double dt) {
             }
         }
         const int tbld = b.garrison_target < 0 ? b.w7.garrison_target_building : -1;
+        if (type.tank_bunker && (b.garrison_target>=0 || tbld>=0)) {
+            const double tx=tbld>=0 ? buildings_[tbld].cx+(buildings_[tbld].fw-1)/2.0 : units_[b.garrison_target].fx;
+            const double ty=tbld>=0 ? buildings_[tbld].cy+(buildings_[tbld].fh-1)/2.0 : units_[b.garrison_target].fy;
+            units_[b.occupants.front()].turret_facing=facing_u16_from_delta(tx-cx,ty-cy);
+        }
         if ((b.garrison_target < 0 && tbld < 0) || b.garrison_rearm_frames > 0.0) continue;
+        if (type.tank_bunker && b.garrison_target >= 0) w=bunker_slot(units_[b.garrison_target]);
+        const double rof_mult=type.tank_bunker ? type.bunker_rof : depth_rules_.occupy_rof_mult;
+        const double damage_mult=type.tank_bunker ? type.bunker_damage : depth_rules_.occupy_damage_mult;
         // TechnoClass::GetROF (FUN_006FC460): ROF / OccupantCount, then
         // ftol(ROF / OccupyROFMultiplier) when the multiplier is > 1.0.
         // W7-02-10 [RE: GetROF FUN_006FC460 @0x6FC570/0x6FC594]: the
         // veterancy is the BUILDING's own (never veteran), the 0..2 jitter is
         // rearm_frames_for's Random(0,2).
         int rof = w.rof / static_cast<int>(b.occupants.size());
-        if (depth_rules_.occupy_rof_mult > 1.0) rof = ftol(rof / depth_rules_.occupy_rof_mult);
+        if (rof_mult > 1.0) rof = ftol(rof / rof_mult);
         if (w7_rules_.armed) {
             // W7-07-14 [RE: FUN_006FC460]: ftol((ROF * houseROF + Random(0,2))
             // / occupants / OccupyROFMultiplier) -- the jitter and the house
             // ROF before the divisions (ROF 20, 5 occupants: a constant 3).
             double t = w.rof * house_rof_mul(b.house) + combat_rng_.random(0, 2);
             t /= static_cast<double>(b.occupants.size());
-            if (depth_rules_.occupy_rof_mult > 1.0) t /= depth_rules_.occupy_rof_mult;
+            if (rof_mult > 1.0) t /= rof_mult;
             b.garrison_rearm_frames = ftol(t);
         } else {
             b.garrison_rearm_frames = rearm_frames_for(rof, &combat_rng_);
@@ -483,7 +567,7 @@ void World::step_garrison_combat(double dt) {
         shooter.fy = cy;
         shooter.cell_x = static_cast<int>(om::lround(cx));
         shooter.cell_y = static_cast<int>(om::lround(cy));
-        shooter.w_damage = ftol(w.damage * depth_rules_.occupy_damage_mult);
+        shooter.w_damage = ftol(w.damage * damage_mult);
         shooter.w_rof = rof;
         shooter.w_range = range;
         shooter.w_verses = w.verses;
@@ -898,9 +982,11 @@ int World::force_bridge_break(int x, int y) {
 }
 
 void World::order_attack_cell(int ui, int cx, int cy) {
+    if (cx < 0 || cy < 0 || cx >= grid_w_ || cy >= grid_h_) return;
     if (ui < 0 || ui >= static_cast<int>(units_.size())) return;
     Unit& u = units_[ui];
     if (!u.alive || u.die_time >= 0.0 || u.cargo_of >= 0 || u.w_damage <= 0) return;
+    order_stop(ui); // replace an earlier movement or attack-move mission
     u.target = -1;
     u.target_building = -1;
     u.occupy_target = -1;
@@ -928,14 +1014,17 @@ int World::group_attack_cell(int issuer, const std::vector<int>& ids, int cx, in
 // ------------------------------------------------------------------ the pass
 
 void World::step_depth(double dt) {
-    // Ground shots fired by step_combat this step: the explosion lands on the
-    // cell (unit / building there + the bridge roll) [RE-FALLBACK: a ground
-    // target is hit at the ROF tick, no projectile flight].
+    // Ground force-fire uses the same flight solver and muzzle as object fire.
+    // Only instant weapons retain the immediate cell-hit path.
     for (int i = 0; i < static_cast<int>(units_.size()); ++i) {
         Unit& u = units_[i];
         if (!u.cell_shot) continue;
         u.cell_shot = false;
         const int x = u.attack_cell_x, y = u.attack_cell_y;
+        if (projectiles_enabled_ && u.w_proj.flies()) {
+            launch_projectile(i,-1,-1,x,y);
+            continue;
+        }
         const bool wall = u.w_active == 1 ? u.w2.wall : u.p_wall;
         // [RE-FALLBACK: a ground-fire shell at a bridge cell bursts at the
         // cell's bridge coordinates (GetCoordsWithBridge): the deck height]
@@ -951,6 +1040,21 @@ void World::step_depth(double dt) {
         w6_overlay_wall_hit(x, y, u.w6.wall_flags, u.w_damage);
     }
     if (!garrison_any_) return;
+    for(int ui=0;ui<int(units_.size());++ui) {
+        auto& u=units_[ui];const int host=u.bunker_exit_host;
+        if(host<0)continue;
+        if(!u.alive || u.die_time>=0 || u.cargo_of>=0 || host>=int(buildings_.size()) ||
+           !buildings_[host].alive || u.house!=buildings_[host].house) {u.bunker_exit_host=-1;continue;}
+        const auto& b=buildings_[host];
+        if(u.fx<b.cx-0.5 || u.fy<b.cy-0.5 || u.fx>b.cx+b.fw-0.5 || u.fy>b.cy+b.fh-0.5)
+            u.bunker_exit_host=-1;
+    }
+    for(int bi=0;bi<int(buildings_.size());++bi) {
+        auto& b=buildings_[bi];
+        if(b.occupants.empty())b.bunker_exit_left=-1;
+        if(b.bunker_exit_left>0)--b.bunker_exit_left;
+        if(b.bunker_exit_left==0 && !b.occupants.empty())unload_occupants(bi);
+    }
     // Occupy arrivals (the step_capture analogue).
     for (int i = 0; i < static_cast<int>(units_.size()); ++i) {
         Unit& u = units_[i];
@@ -960,7 +1064,22 @@ void World::step_depth(double dt) {
             u.occupy_target = -1;
             continue;
         }
-        if (cheb_to_foundation(buildings_[bi], u.cell_x, u.cell_y) <= 1) {
+        // Drive reserves the next cell before the hull reaches it. Do not
+        // consume a bunker approach on that reservation: finish the track
+        // first, otherwise entry jumps from a still-moving hull position.
+        const bool bunker=btypes()[buildings_[bi].type].tank_bunker;
+        if(bunker) {
+            const auto& b=buildings_[bi];
+            const auto dock=bunker_docking_cell(b.cx,b.cy,b.fw,b.fh);
+            if(u.cell_x==dock[0] && u.cell_y==dock[1] && !u.moving()) {
+                const double desired=bunker_horizontal_facing(u.body_facing);
+                u.body_facing=turn_toward(u.body_facing,desired,(u.rot_u16_per_sec>0?u.rot_u16_per_sec:16384)*dt);
+                if(std::abs(std::remainder(u.body_facing-desired,65536.0))<1)occupy_now(i,bi);
+            } else if(!u.moving())order_occupy(i,bi);
+            continue;
+        }
+        if (cheb_to_foundation(buildings_[bi], u.cell_x, u.cell_y) <= 1 &&
+            (!bunker || (!u.moving() && std::abs(u.fx-u.cell_x)<0.01 && std::abs(u.fy-u.cell_y)<0.01))) {
             occupy_now(i, bi);
         } else if (!u.moving()) {
             order_occupy(i, bi);   // re-path adjacent
@@ -976,6 +1095,10 @@ void World::step_depth(double dt) {
         b.occupants.erase(std::remove_if(b.occupants.begin(), b.occupants.end(),
                                          [&](int ui) { return !units_[ui].alive; }),
                           b.occupants.end());
+        if (btypes()[b.type].tank_bunker && !b.occupants.empty() &&
+            units_[b.occupants.front()].house!=b.house) {
+            unload_occupants(bi);continue;
+        }
         // The building died or is being sold: its occupants walk out
         // (FUN_004421B0 / FUN_00449B70 both call UnloadOccupants).
         // W8-06-07 [RE: FUN_00449B70 @0x44A4FC passes the place-inside flag;
@@ -986,8 +1109,9 @@ void World::step_depth(double dt) {
         }
         // W7-08-09 [RE: the damage-state update FUN_0043FAA0 @0x44012F ->
         // FUN_004581F0 -> UnloadOccupants FUN_00457DD0]: at health ratio <=
-        // ConditionRed every occupant walks out alive.
-        if (!b.occupants.empty() && garrison_red(b)) {
+        // ConditionRed civilian occupants walk out alive. The Soviet Battle
+        // Bunker retains its defenders; damage alone is not an unload order.
+        if (!b.occupants.empty() && btypes()[b.type].id!="NABNKR" && garrison_red(b)) {
             unload_occupants(bi);
             continue;
         }
@@ -1040,6 +1164,7 @@ const PathTerrain* World::terrain_for(const Unit& u, PathTerrain& out, std::vect
     out = PathTerrain{};
     gates.clear();
     if (u.movement_domain != MovementDomain::Water) open_gates_for(u.house, gates);
+    append_slave_passage(u,buildings_,btypes(),grid_w_,grid_h_,gates);
     if (!gates.empty()) out.open_cells = &gates;
     if (!terrain_armed()) return gates.empty() ? nullptr : &out;
     out.level = &level_grid_;

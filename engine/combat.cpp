@@ -64,7 +64,7 @@ bool valid_target(const std::vector<Unit>& units, const World& world, const Unit
     const Unit& v = units[idx];
     // W2-AN-13: a submerged sub no sonar of self's house has found is not a
     // target (its cell is not "seen" in the water layer).
-    return v.alive && v.die_time < 0.0 && v.cargo_of < 0 && world.is_enemy(self.house, v.house) &&
+    return v.alive && v.die_time < 0.0 && unit_combat_exposed(v) && world.is_enemy(self.house, v.house) &&
            !world.unit_hidden_from(self.house, v) && unit_weapon_for_unit(self, v) >= 0;
     // Multi-house/Alliances [RE: multihouse.md §3/§4]: hostility routes through
     // World::is_enemy. carried: untargetable (CB-1).
@@ -80,6 +80,7 @@ bool valid_target(const std::vector<Unit>& units, const World& world, const Unit
 // active slot's live w_range (it may carry vet/IFV adjustments), else the
 // type data of the other slot.
 double slot_range(const Unit& u, int slot) {
+    if (u.gattling.enabled()) return u.gattling.weapon(slot, is_elite(u.vet.veterancy)).range;
     if (slot == u.w_active) return u.w_range;
     if (slot == 1) return secondary_view(u).range;
     if (u.vet.recv && is_elite(u.vet.veterancy) && u.vet.has_elite) return u.vet.elite.range;
@@ -119,7 +120,7 @@ bool forced_target_ok(const std::vector<Unit>& units, const World& world, const 
     // here (its slot data may not pass the AA/AG test), but not against an
     // armor its warhead does 0 % to -- the dog's ParasiteDog jaw vs a vehicle
     // (SOV09: a patrol team ordered at the IFV rode it to death as parasites).
-    return v.alive && v.die_time < 0.0 && v.cargo_of < 0 && !world.unit_hidden_from(self.house, v) &&
+    return v.alive && v.die_time < 0.0 && unit_combat_exposed(v) && !world.unit_hidden_from(self.house, v) &&
            (unit_weapon_for_unit(self, v) >= 0 ||
             (self.abil.fire_kind != AbilityKind::None && verses_allows(primary_view(self).verses, v.armor_ix)));
 }
@@ -186,6 +187,10 @@ void try_fire(const World& world, std::vector<Unit>& units, std::vector<Building
     // capture rides THIS shot (its ROF, facing and range already applied);
     // the runtime consumes Unit::w7.mc_shot. W7-08-13: only the Controller
     // weapon (slot 0) -- a deployed Yuri's PsiWave (slot 1) does damage.
+    // IsLocomotor weapon Damage is a behavior parameter, not hit damage.
+    // Until the magnetic locomotor is implemented, never detonate that value
+    // as an ordinary shell (stock Magnetron values can kill tanks instantly).
+    if (u.w7.t.magnetic && u.w_active == 0) return;
     if (u.w_mind_control && u.w_active == 0) {
         u.w7.mc_shot = victim_idx;
         return;
@@ -585,7 +590,7 @@ void apply_spread_damage(std::vector<Unit>& units, Occupancy& occ, const Unit& a
     for (int j = 0; j < static_cast<int>(units.size()); ++j) {
         Unit& w = units[j];
         if (!w.alive || w.die_time >= 0.0) continue;                  // dead/dying: skip
-        if (w.cargo_of >= 0) continue;                               // carried: off-map
+        if (!unit_combat_exposed(w)) continue;                     // carried: off-map
         // Gap fix C (G-44): the blast stays in its own layer -- an AA burst at
         // an airborne target hits airborne units, a ground blast ground units
         // (the original's 3-D distance; the clone has no shared Z scale).
@@ -737,6 +742,8 @@ int unit_lept_z(const Unit& u) {
     // @0x54C5A9 lands at floor + BridgeHeight)]: a ground unit on a deck
     // stands 4 levels (416 leptons) up. A flier's altitude already counts the
     // deck (step_flight's floor, FUN_0054D4B0).
+    if (unit_parachuting(u))
+        return (u.level + (u.on_deck ? 4 : 0)) * kLevelLept + ftol_i(u.an.para_alt);
     if (unit_airborne(u)) return u.level * kLevelLept + ftol_i(u.altitude);
     return (u.level + (u.on_deck ? 4 : 0)) * kLevelLept;
 }
@@ -951,7 +958,7 @@ AreaResult damage_area(const World& world, std::vector<Unit>& units,
     std::vector<Hit> hits;
     for (int j = 0; j < static_cast<int>(units.size()); ++j) {
         const Unit& w = units[static_cast<std::size_t>(j)];
-        if (!w.alive || w.die_time >= 0.0 || w.cargo_of >= 0) continue;
+        if (!w.alive || w.die_time >= 0.0 || !unit_combat_exposed(w)) continue;
         if (j == src_unit) continue;                                 // the source itself
         const bool air = unit_airborne(w);
         if (air && iz <= ground_z) continue;     // ground burst: the air layer is not scanned
@@ -1145,7 +1152,7 @@ std::vector<MoveRequest> step_combat(const World& world, std::vector<Unit>& unit
     };
     for (int j = 0; j < n; ++j) {
         const Unit& v = units[j];
-        if (!v.alive || v.die_time >= 0.0 || v.cargo_of >= 0) continue;
+        if (!v.alive || v.die_time >= 0.0 || !unit_combat_exposed(v)) continue;
         buckets[static_cast<std::size_t>(bucket_of(v.fy, bgh)) * bgw + bucket_of(v.fx, bgw)].push_back(j);
     }
 
@@ -1183,6 +1190,21 @@ std::vector<MoveRequest> step_combat(const World& world, std::vector<Unit>& unit
         // (c) ROF cooldown + fire-flash decay -- every living, non-dying
         // unit, every call, regardless of target state. docs/re/combat.md
         // §5: deterministic frame countdown, no jitter.
+        if (u.gattling.enabled()) {
+            bool engaging = valid_target(units, world, u, u.target) &&
+                unit_in_weapon_range(world, u, units[u.target]);
+            if (!engaging && u.attack_order && u.target >= 0 && u.target < static_cast<int>(units.size()))
+                engaging = forced_target_ok(units,world,u,i,u.target) && unit_in_weapon_range(world,u,units[u.target]);
+            if (!engaging && u.attack_cell_x >= 0)
+                engaging = weapon_in_range(world,u,u.attack_cell_x*256,u.attack_cell_y*256,
+                    world.cell_level(u.attack_cell_x,u.attack_cell_y)*104);
+            if (!engaging && u.target_building >= 0 && u.target_building < static_cast<int>(buildings.size())) {
+                const auto& b = buildings[u.target_building];
+                engaging = b.alive && (u.attack_order || world.is_enemy(u.house,b.house)) &&
+                    om::hypot(u.fx-b.cx,u.fy-b.cy) <= u.gattling.weapon(0,is_elite(u.vet.veterancy)).range;
+            }
+            u.gattling.step(engaging, is_elite(u.vet.veterancy));
+        }
         if (u.rearm_frames > 0) --u.rearm_frames;   // Net L0: one whole frame per tick
         u.fire_flash -= dt;
         if (u.fire_flash < 0.0) u.fire_flash = 0.0;
@@ -1396,6 +1418,10 @@ std::vector<MoveRequest> step_combat(const World& world, std::vector<Unit>& unit
                         // test itself (3-D to the centre, range + (w+h)*64),
                         // the rule the approach cell below is chosen by.
                         if (w7_approach) need = !in_range_from_cell(g.x, g.y);
+                        // A parked unit can take a previously free firing
+                        // position. Re-select a legal position instead of
+                        // waiting forever merely because the old goal is in range.
+                        if(w7_approach && u.wait_time>=3.0 && !occ.can_enter(g.x,g.y,i,u.on_deck))need=true;
                     }
                     if (need && w7_approach) {
                         const Cellxy c = approach_cell();
@@ -1451,6 +1477,8 @@ std::vector<MoveRequest> step_combat(const World& world, std::vector<Unit>& unit
         // is resolved by World::step_depth (explosion on the cell + the bridge
         // roll); here: range, aim, ROF, and the approach request.
         if (u.attack_cell_x >= 0) {
+            if (u.gattling.enabled()) activate_weapon_slot(u,0,vet_rules_of(world));
+            if (u.w7.t.magnetic && u.w_active==0) continue;
             const double d = dist_leptons(u.fx, u.fy, static_cast<double>(u.attack_cell_x),
                                           static_cast<double>(u.attack_cell_y));
             (void)d;
@@ -1828,6 +1856,7 @@ std::vector<MoveRequest> step_combat(const World& world, std::vector<Unit>& unit
                 const Cellxy g = u.path.back();
                 need = dist_leptons(static_cast<double>(g.x), static_cast<double>(g.y),
                                     v.fx, v.fy) > range_leptons;
+                if(u.wait_time>=3.0 && !occ.can_enter(g.x,g.y,i,u.on_deck))need=true;
             }
             if (need) requests.push_back({i, v.cell_x, v.cell_y, /*approach=*/true});
         } else if (w7) {

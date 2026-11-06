@@ -16,6 +16,7 @@ namespace {
 std::mutex g_mu;
 bool g_dual = false;
 int g_zoom = 100;
+bool g_yuri = true;
 std::deque<ThorCommand> g_cmds;
 std::vector<int> g_snap;
 Uint32 g_snap_at = 0;
@@ -43,6 +44,14 @@ int zoom() {
 void set_zoom(int percent) {
     std::lock_guard<std::mutex> l(g_mu);
     g_zoom = std::max(100, std::min(200, percent));
+}
+bool yuri_allowed() {
+    std::lock_guard<std::mutex> l(g_mu);
+    return g_yuri;
+}
+void set_yuri_allowed(bool on) {
+    std::lock_guard<std::mutex> l(g_mu);
+    g_yuri = on;
 }
 void push_command(const ThorCommand& c) {
     std::lock_guard<std::mutex> l(g_mu);
@@ -120,6 +129,10 @@ extern "C" {
 JNIEXPORT void JNICALL Java_de_harmssi_thorra2_ThorBridge_setDualScreen(JNIEnv*, jclass, jboolean on) {
     thor::set_dual(on == JNI_TRUE);
     SDL_Log("[thor] dual screen: %d", on == JNI_TRUE ? 1 : 0);
+}
+
+JNIEXPORT void JNICALL Java_de_harmssi_thorra2_ThorBridge_setYuriAllowed(JNIEnv*, jclass, jboolean on) {
+    thor::set_yuri_allowed(on);
 }
 
 JNIEXPORT void JNICALL Java_de_harmssi_thorra2_ThorBridge_setZoom(JNIEnv*, jclass, jint percent) {

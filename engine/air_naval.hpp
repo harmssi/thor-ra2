@@ -272,6 +272,19 @@ struct SwParams {
     // W4-SQ-06 [rules [General] ParachuteMaxFallRate=-5]: a paratrooper under
     // its parachute sinks this many leptons per game frame (save v16).
     int parachute_fall = 5;
+    // Yuri superweapons [General]: Psychic Dominator = DominatorDamage with
+    // DominatorWarhead, then permanent capture within DominatorCaptureRange;
+    // Genetic Mutator = MutateExplosionWarhead (MutateExplosion=yes) or a 3x3
+    // area of MutateWarhead, every infantry it hurts turns into AnimToInfantry.
+    int dom_damage = 1000;
+    double dom_spread = 7.0, dom_pmax = 0.2;
+    std::array<int, 11> dom_verses{};
+    int dom_capture_range = 1;
+    bool mut_explosion = true;
+    double mut_spread = 5.0;
+    std::array<int, 11> mut_verses{};
+    int mut_inf_death = 9;
+    std::string mut_infantry = "BRUTE";
     // Naval / aircraft [General].
     int cloak_delay_frames = 18;      // CloakDelay=.02 min x 900
     double ship_sinking_weight = 3.0; // ShipSinkingWeight=

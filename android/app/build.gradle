@@ -65,8 +65,8 @@ if (keystorePropsFile.exists()) {
 }
 
 // Thor RA2: the AYN Thor is arm64; -Pthor.abis=arm64-v8a,x86_64 for the emulator.
-def thorVersionCode = (project.findProperty('thor.versionCode') ?: '3').toString().toInteger()
-def thorVersionName = (project.findProperty('thor.versionName') ?: '0.2.1').toString()   // engine version: native banner
+def thorVersionCode = (project.findProperty('thor.versionCode') ?: '6').toString().toInteger()
+def thorVersionName = (project.findProperty('thor.versionName') ?: '0.3.0').toString()   // engine version: native banner
 def thorCmakeVersion = (project.findProperty('thor.cmakeVersion') ?: '3.22.1').toString()
 def thorAbis = ((project.findProperty('thor.abis') ?: 'arm64-v8a').toString().split(',')) as String[]
 
@@ -135,6 +135,9 @@ android {
     // handler, W2-AR-30); release drops both.
     buildTypes {
         debug {
+            if (project.findProperty('ra2.debugUseConfiguredSigning') == 'true' && keystoreProps != null) {
+                signingConfig signingConfigs.release
+            }
             externalNativeBuild {
                 cmake {
                     // -Pra2.nativeBuildType=Debug gives the old -O0 native code
@@ -216,6 +219,8 @@ gradle.taskGraph.whenReady { graph ->
 tasks.register('ra2CopyNotices', Copy) {
     from(rootProject.file('../LICENSE'))
     from(rootProject.file('../THIRD_PARTY_NOTICES.md'))
+    from(rootProject.file('../CREDITS.md'))
+    from(rootProject.file('../licenses/LIBCXX-LICENSE.txt'))
     into("$buildDir/generated/ra2-notices")
 }
 // Every lint task reads the generated assets folder (the release "vital"

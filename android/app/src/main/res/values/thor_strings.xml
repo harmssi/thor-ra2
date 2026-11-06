@@ -30,6 +30,7 @@
     <string name="deck_mode_paused">PAUSED</string>
     <string name="deck_side_allies">ALLIES</string>
     <string name="deck_side_soviet">SOVIETS</string>
+    <string name="deck_side_yuri">YURI</string>
     <string name="deck_h_place">Place the building</string>
     <string name="deck_d_place">Tap the map on the top screen. Long-press there to cancel.</string>
     <string name="deck_h_target">Pick a target</string>
@@ -59,4 +60,54 @@
     <string name="deck_groups_hint">HOLD = SAVE</string>
     <string name="deck_act_group">Group %1$d selected</string>
     <string name="deck_act_group_set">Group %1$d saved</string>
+    <!-- Thor launcher -->
+    <string name="l_eyebrow">SELECT GAME</string>
+    <string name="l_subtitle">Dual-Screen Command Deck</string>
+    <string name="l_ra2_title">Red Alert 2</string>
+    <string name="l_ra2_text">Allies and Soviets · campaigns · skirmish</string>
+    <string name="l_ra2_short">Allies against Soviets. Yuri stays out of the skirmish lobby.</string>
+    <string name="l_yr_title">Yuri\'s Revenge</string>
+    <string name="l_yr_text">With the Yuri faction · skirmish against human or AI</string>
+    <string name="l_yr_short">Three sides: Allies, Soviets and Yuri. Yuri is playable in skirmish.</string>
+    <string name="l_import">GAME FILES</string>
+    <string name="l_zoom">ZOOM</string>
+    <string name="l_language">LANGUAGE</string>
+    <string name="l_info">INFO</string>
+    <string name="l_ready">Game files ready</string>
+    <string name="l_missing">Game files missing: %d</string>
+    <string name="l_missing_tile">Import the game files first</string>
+    <string name="l_hint">A start · D-pad / stick select · B exit</string>
+    <string name="l_mode">MODE</string>
+    <string name="l_version">VERSION</string>
+    <string name="l_info_title">Thor RA2</string>
+    <string name="l_info_text">Red Alert 2 / Yuri\'s Revenge for the AYN Thor.\nRA2 Engine by Omar El Arab, Yuri faction by Bryle13 (RA2AndroidPort), Thor port by harmssi. All 0BSD.\nNo game data included; uses your own files.</string>
+    <string name="l_github">GitHub</string>
+    <string name="l_youtube">Video</string>
+    <string name="l_close">Close</string>
+    <string name="l_rules_note">Engine plays Yuri\'s Revenge rules in both modes.</string>
+    <!-- Game files screen -->
+    <string name="files_eyebrow">Thor RA2 · game files</string>
+    <string name="files_title">Game files</string>
+    <string name="files_sub">Import, check or update the files from your own Red Alert 2 / Yuri\'s Revenge copy.</string>
+    <string name="files_checking">Checking game files …</string>
+    <string name="files_importing">Importing game files …</string>
+    <string name="files_ready">Ready: all required files are present</string>
+    <string name="files_missing">Setup needed: %d required files missing</string>
+    <string name="files_continue">Continue to the launcher</string>
+    <string name="files_library">Your game library</string>
+    <string name="files_import">Import or update game files</string>
+    <string name="files_details_show">Show file details</string>
+    <string name="files_details_hide">Hide file details</string>
+    <string name="files_support">Support</string>
+    <string name="files_menu_style">Game main menu</string>
+    <string name="files_menu_original">Original Yuri\'s Revenge</string>
+    <string name="files_menu_command">Command Center (experimental)</string>
+    <string name="files_close">Close</string>
+    <string name="files_back">Back</string>
+    <string name="files_report">Share game report</string>
+    <string name="files_refresh">Check files again</string>
+    <string name="files_terms">Terms &amp; game files</string>
+    <string name="files_credits">Credits &amp; licences</string>
+    <string name="files_footer">RA2 Engine by Omar El Arab · Yuri faction by Bryle13 (RA2AndroidPort) · Thor port by harmssi. Not affiliated with EA.</string>
+    <string name="files_after_crash">After a crash, tap Share game report before starting another game.</string>
 </resources>

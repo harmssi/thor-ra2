@@ -405,6 +405,9 @@ template <class Ar> void fields(Ar& ar, SwParams& v) {   // W2-AN (save v9)
     io(ar, v.parachute_fall);   // W4-SQ-06 (save v16)
     io(ar, v.storm_wall_flags); io(ar, v.nuke_wall_flags);   // v25: W6-04-04
     io(ar, v.c4_verses); io(ar, v.c4_spread); io(ar, v.c4_pmax);   // v35: W7-05-09
+    io(ar, v.dom_damage); io(ar, v.dom_spread); io(ar, v.dom_pmax); io(ar, v.dom_verses);   // v56: Yuri SWs
+    io(ar, v.dom_capture_range); io(ar, v.mut_explosion); io(ar, v.mut_spread); io(ar, v.mut_verses);
+    io(ar, v.mut_inf_death); io(ar, v.mut_infantry);
 }
 template <class Ar> void fields(Ar& ar, SwStrike& v) {   // W2-AN (save v9)
     io(ar, v.kind); io(ar, v.house); io(ar, v.x); io(ar, v.y); io(ar, v.ox); io(ar, v.oy);
@@ -519,6 +522,8 @@ template <class Ar> void fields(Ar& ar, CargoEvent& v) {
 
 // --- projectiles ---
 template <class Ar> void fields(Ar& ar, ProjectileSpec& v) {
+    io(ar,v.turret_offset);
+    io(ar, v.weapon_id);
     io(ar, v.kind);
     io(ar, v.arcing);
     io(ar, v.inaccurate);
@@ -537,6 +542,7 @@ template <class Ar> void fields(Ar& ar, ProjectileSpec& v) {
     io(ar, v.subject_to_walls);
 }
 template <class Ar> void fields(Ar& ar, Projectile& v) {
+    io(ar, v.weapon_id);
     io(ar, v.kind);
     io(ar, v.attacker);
     io(ar, v.target_unit);
@@ -567,6 +573,7 @@ template <class Ar> void fields(Ar& ar, World::FragEvent& v) {   // W7-12-07 (v3
 template <class Ar> void fields(Ar& ar, World::FireEvent& v) {
     io(ar, v.unit); io(ar, v.building); io(ar, v.target_unit); io(ar, v.target_building);
     io(ar, v.slot); io(ar, v.weapon);
+    io(ar, v.cell_x); io(ar, v.cell_y);
 }
 // Gap fix C: one resolved weapon slot.
 template <class Ar> void fields(Ar& ar, WeaponSlot& v) {
@@ -849,14 +856,19 @@ template <class Ar> void fields(Ar& ar, UnitTypeW7& v) {
     io(ar, v.detect_disguise); io(ar, v.selectable_combatant); io(ar, v.move_to_shroud);
     io(ar, v.default_to_guard_area); io(ar, v.has_turret); io(ar, v.fake_blink); io(ar, v.fake_blink_elite);
     io(ar, v.deploy_area_fire); io(ar, v.undeploy_delay); io(ar, v.mc_capacity); io(ar, v.mc_infinite);
-    io(ar, v.build_time_mult);
+    io(ar, v.build_time_mult); io(ar, v.mind_control);
+    io(ar,v.bunkerable); io(ar,v.magnetic);
+    io(ar,v.overload_count); io(ar,v.overload_damage); io(ar,v.overload_frames);
 }
 template <class Ar> void fields(Ar& ar, UnitW7& v) {
     io(ar, v.t); io(ar, v.blink_left); io(ar, v.redisguise_left); io(ar, v.flash_seen); io(ar, v.hull_aiming);
     io(ar, v.paralysed_until); io(ar, v.host_raw_hit); io(ar, v.deploy_ready_at); io(ar, v.undeploy_at); io(ar, v.erased_by);
     io(ar, v.depot_target); io(ar, v.mc_controller); io(ar, v.mc_victims); io(ar, v.mc_shot);
+    io(ar, v.overload_left); io(ar, v.mc_original_house); io(ar, v.slave_manager); io(ar, v.mc_building);
 }
 template <class Ar> void fields(Ar& ar, BldW7& v) {
+    io(ar, v.mc_victims);
+    io(ar, v.slaves_initialized); io(ar, v.slave_regen_left);
     io(ar, v.depot_next); io(ar, v.depot_client); io(ar, v.warp_unpowered); io(ar, v.garrison_target_building);
 }
 template <class Ar> void fields(Ar& ar, UnitAi& v) { io(ar, v.guard_since); }   // W7 (save v35)
@@ -927,7 +939,13 @@ template <class Ar> void fields(Ar& ar, WorldW5& v) {
 }
 
 // --- unit / building types ---
+template <class Ar> void fields(Ar& ar, Gattling& v) {
+    io(ar, v.weapons); io(ar, v.elite_weapons);
+    io(ar, v.thresholds); io(ar, v.elite_thresholds);
+    io(ar, v.rate_up); io(ar, v.rate_down); io(ar, v.charge);
+}
 template <class Ar> void fields(Ar& ar, UnitCombat& v) {
+    io(ar, v.gattling);
     io(ar, v.strength);
     io(ar, v.inf_death); io(ar, v.prone_damage);   // W3-B
     io(ar, v.armor);
@@ -1041,6 +1059,11 @@ template <class Ar> void fields(Ar& ar, PlayerEconRules& v) {
     io(ar, v.wall_rules);
 }
 template <class Ar> void fields(Ar& ar, BuildingTypeDef& v) {
+    io(ar, v.gattling);
+    io(ar, v.mind_control);
+    io(ar,v.tank_bunker); io(ar,v.bunker_damage); io(ar,v.bunker_rof); io(ar,v.bunker_range);
+    io(ar, v.slave_combat); io(ar, v.slave_count); io(ar, v.slave_regen_rate); io(ar, v.slave_storage);
+    io(ar,v.slave_harvest_rate);io(ar,v.slave_reload_rate);
     io(ar, v.id);
     io(ar, v.fw); io(ar, v.fh);
     io(ar, v.strength);
@@ -1090,6 +1113,7 @@ template <class Ar> void fields(Ar& ar, BuildingTypeDef& v) {
 
 // --- the live objects ---
 template <class Ar> void fields(Ar& ar, Unit& v) {
+    io(ar, v.gattling);
     io(ar, v.cell_x); io(ar, v.cell_y); io(ar, v.level); io(ar, v.frame); io(ar, v.image);
     io(ar, v.path);
     io(ar, v.path_idx);
@@ -1130,6 +1154,7 @@ template <class Ar> void fields(Ar& ar, Unit& v) {
     io(ar, v.die_time);
     // vehicles
     io(ar, v.is_vehicle);
+    io(ar, v.bunker_exit_host);
     io(ar, v.body_facing);
     io(ar, v.turret_facing);
     io(ar, v.rot_u16_per_sec);
@@ -1252,6 +1277,7 @@ template <class Ar> void fields(Ar& ar, Unit& v) {
     io(ar, v.ai);        // W7-01-08 AI guard clock (save v35)
 }
 template <class Ar> void fields(Ar& ar, Building& v) {
+    io(ar, v.gattling_charge);
     io(ar, v.ai_repairable); io(ar, v.has_been_captured);   // fv7c (save v40)
     io(ar, v.type);
     io(ar, v.cx); io(ar, v.cy);
@@ -1274,6 +1300,10 @@ template <class Ar> void fields(Ar& ar, Building& v) {
     io(ar, v.being_repaired);
     io(ar, v.selling);
     io(ar, v.sell_time);
+    io(ar, v.bunker_exit_left);
+    io(ar, v.attack_order_kind); io(ar, v.attack_order_target);
+    io(ar, v.attack_order_house);
+    io(ar, v.attack_order_x); io(ar, v.attack_order_y); io(ar, v.attack_order_force);
     io(ar, v.sold);
     // P5
     io(ar, v.vet_recv);
