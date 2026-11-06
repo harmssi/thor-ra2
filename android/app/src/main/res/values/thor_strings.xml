@@ -30,6 +30,7 @@
     <string name="deck_mode_paused">PAUSED</string>
     <string name="deck_side_allies">ALLIES</string>
     <string name="deck_side_soviet">SOVIETS</string>
+    <string name="deck_side_yuri">YURI</string>
     <string name="deck_h_place">Place the building</string>
     <string name="deck_d_place">Tap the map on the top screen. Long-press there to cancel.</string>
     <string name="deck_h_target">Pick a target</string>

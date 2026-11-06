@@ -258,12 +258,74 @@ bool World::fire_superweapon_at(int house, SuperweaponType type, int cx, int cy,
             reveal_source(house,cx,cy,std::clamp(static_cast<int>(rec->eff_cell_spread),0,256));
             an_event(SwEvent::Activated,house,type,cx,cy);
             break;
+        case SuperweaponType::PsychicDominator:
+            an_psychic_dominator(house, cx, cy);
+            an_event(SwEvent::Activated, house, type, cx, cy);
+            break;
+        case SuperweaponType::GeneticConverter:
+            an_genetic_mutator(house, cx, cy);
+            an_event(SwEvent::Activated, house, type, cx, cy);
+            break;
         default:
-            return false;   // YR-only types: never granted in a classic game
+            return false;   // SpyPlane / ForceShield: not modelled
     }
     rec->sw.on_fired();   // full recharge (§1)
     an_.any = true;
     return true;
+}
+
+// Psychic Dominator [rules [General] Dominator*]: the warhead blast (its
+// Verses hurt buildings only), then every unit within DominatorCaptureRange
+// that psionics can reach changes owner for good; links of a mind controller
+// it takes, or of the unit's old controller, are cut.
+// shortcut: no PermaControlledAnimationType / PDFXCLD anim and no delay to
+// DominatorFireAtPercentage; the effect lands on the frame it fires.
+void World::an_psychic_dominator(int house, int cx, int cy) {
+    const SwParams& P = an_.sw;
+    an_area_damage(house, cx, cy, P.dom_damage, P.dom_spread, P.dom_pmax, P.dom_verses,
+                   /*hit_air=*/false, /*spare_house=*/false);
+    const double r = P.dom_capture_range + 0.5;
+    for (int i = 0; i < static_cast<int>(units_.size()); ++i) {
+        Unit& u = units_[i];
+        if (!u.alive || u.die_time >= 0.0 || u.cargo_of >= 0 || u.house == house) continue;
+        if (u.is_aircraft && u.altitude > 0.0) continue;
+        if (om::hypot(u.fx - cx, u.fy - cy) > r || !psionic_target_ok(i) || u.an.iron_left_frames > 0) continue;
+        if (u.w7.t.mind_control) release_unit_mind_control(i);
+        if (const int c = u.w7.mc_controller; c >= 0 && c < static_cast<int>(units_.size())) {
+            auto& v = units_[c].w7.mc_victims;
+            v.erase(std::remove(v.begin(), v.end(), i), v.end());
+        }
+        if (const int b = u.w7.mc_building; b >= 0 && b < static_cast<int>(buildings_.size())) {
+            auto& v = buildings_[b].w7.mc_victims;
+            v.erase(std::remove(v.begin(), v.end(), i), v.end());
+        }
+        u.w7.mc_controller = u.w7.mc_building = u.w7.mc_original_house = -1;
+        set_unit_owner(i, house);
+        u.target = -1;
+        u.target_building = -1;
+        u.attack_order = false;
+    }
+}
+
+// Genetic Mutator: every infantry the mutate warhead can hurt (its Verses) in
+// the blast dies with the warhead's InfDeath and an AnimToInfantry (Brute) of
+// the firing house stands up on its cell.
+// shortcut: no GENDEATH melt anim before the Brute appears.
+void World::an_genetic_mutator(int house, int cx, int cy) {
+    const SwParams& P = an_.sw;
+    const double r = std::max(0.5, P.mut_spread);
+    std::vector<std::pair<int, int>> cells;
+    const int n = static_cast<int>(units_.size());   // Brutes spawned below are not re-mutated
+    for (int i = 0; i < n; ++i) {
+        Unit& u = units_[i];
+        if (!u.alive || u.die_time >= 0.0 || u.cargo_of >= 0 || !u.is_infantry) continue;
+        if (om::hypot(u.fx - cx, u.fy - cy) > r || u.an.iron_left_frames > 0) continue;
+        if (damage_vs(100, std::vector<int>(P.mut_verses.begin(), P.mut_verses.end()), u.armor_ix) <= 0) continue;
+        const int x = u.cell_x, y = u.cell_y;
+        an_damage_unit(i, u.hp, -1, P.mut_inf_death);
+        if (units_[i].die_time >= 0.0) cells.push_back({x, y});
+    }
+    for (const auto& c : cells) an_spawn(P.mut_infantry, house, c.first, c.second);
 }
 
 // ------------------------------------------------------------------ damage --

@@ -2913,6 +2913,8 @@ private:
     void an_chrono(int house, int sx, int sy, int dx, int dy);
     void an_iron_curtain(int house, int cx, int cy);
     int an_spawn(const std::string& id, int house, int x, int y);
+    void an_psychic_dominator(int house, int cx, int cy);   // Thor RA2 (world_sw.cpp)
+    void an_genetic_mutator(int house, int cx, int cy);
     void an_damage_unit(int idx, int dmg, int attacker, int inf_death = -1);
     void an_damage_building(int b, int dmg);
     void an_area_damage(int house, double cx, double cy, int damage, double spread, double pmax,

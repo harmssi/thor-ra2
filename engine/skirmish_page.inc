@@ -421,7 +421,6 @@ private:
             list_.items.push_back(text_.random_country);
             list_.data.push_back(ra2engine::kLobbyRandom);
             for (int c = 0; c < static_cast<int>(countries_.size()); ++c) {
-                if(row>0 && countries_[c]=="YuriCountry") continue;
                 list_.items.push_back(country_label(c));
                 list_.data.push_back(c);
                 if (c == st_.rows[row].country) cur = static_cast<int>(list_.data.size()) - 1;
@@ -539,9 +538,13 @@ private:
     ra2engine::SkirmishConfig build_config(std::uint32_t seed) const {
         ra2engine::LobbyConvertCtx ctx;
         ctx.countries = countries_;
-        const bool explicit_yuri=st_.rows[0].country>=0 && st_.rows[0].country<static_cast<int>(countries_.size()) &&
-                                 countries_[st_.rows[0].country]=="YuriCountry";
-        ctx.country_allowed=[explicit_yuri](int row,const std::string& c){return c!="YuriCountry" || (row==0 && explicit_yuri);};
+        // Thor RA2: Yuri for any row that picks it (human or computer); Random never rolls Yuri.
+        std::vector<bool> explicit_yuri;
+        for (const auto& rw : st_.rows)
+            explicit_yuri.push_back(rw.country>=0 && rw.country<static_cast<int>(countries_.size()) &&
+                                    countries_[rw.country]=="YuriCountry");
+        ctx.country_allowed=[explicit_yuri](int row,const std::string& c){
+            return c!="YuriCountry" || (row>=0 && row<static_cast<int>(explicit_yuri.size()) && explicit_yuri[row]);};
         const Rules* r = &rules_;
         ctx.side_of = [r](const std::string& c) { return gf_side_of_country(*r, c); };
         ctx.seed = seed;
@@ -910,7 +913,7 @@ void SkirmishSetupScene::render(ra2engine::Platform& plat, ra2engine::TextureCac
     if (yuri_preview || !g_user_settings || g_user_settings->tooltips) {
         std::string tip = tooltip_at(lmx, lmy);
         if(st_.rows[0].country>=0 && st_.rows[0].country<static_cast<int>(countries_.size()) &&
-           countries_[st_.rows[0].country]=="YuriCountry") tip="Yuri preview: special abilities / superweapons incomplete.";
+           countries_[st_.rows[0].country]=="YuriCountry") tip="Yuri: some special abilities are still incomplete.";
         const ra2engine::SbRect s = status_rect();
         p.label(p.fit(tip, s.w), s.x, s.y, s.w, s.h, 0);
     }

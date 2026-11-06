@@ -1256,3 +1256,29 @@ TEST_CASE("Traffic yield: blocked walking units accept forced clearance but reta
  CHECK((w.units()[0].path.back().x!=15 || w.units()[0].path.back().y!=8));
  CHECK(std::max(std::abs(w.units()[0].path.back().x-8),std::abs(w.units()[0].path.back().y-8))==1);
 }
+
+TEST_CASE("Thor RA2: Psychic Dominator captures for good, Genetic Mutator makes Brutes") {
+    Rig r;World w(r.map);
+    SwParams p;p.dom_verses.fill(0);p.dom_capture_range=1;p.mut_verses.fill(100);p.mut_spread=2.0;
+    w.set_sw_params(p);
+    auto brute=unit("BRUTE");brute.is_infantry=true;w.register_an_type("BRUTE",brute);
+    auto inf=unit("E1");inf.is_infantry=true;
+    w.add_combat_unit(10,10,1,inf);          // 0: in capture range
+    w.add_combat_unit(10,11,1,unit("HTNK")); // 1: target cell
+    w.add_combat_unit(16,16,1,unit("HTNK")); // 2: out of range
+    w.add_combat_unit(4,4,1,inf);            // 3: mutated
+    w.add_combat_unit(4,5,1,unit("HTNK"));   // 4: a tank is no infantry
+    std::array<int,11> verses{};verses.fill(100);
+    for(auto t:{SuperweaponType::PsychicDominator,SuperweaponType::GeneticConverter})
+        w.grant_superweapon_type(0,t,0,false,0,2,0,verses);
+    w.step(1.0/15.0);
+    REQUIRE(w.fire_superweapon_at(0,SuperweaponType::PsychicDominator,10,11));
+    CHECK(w.units()[0].house==0);CHECK(w.units()[1].house==0);CHECK(w.units()[2].house==1);
+    CHECK(w.units()[1].w7.mc_original_house==-1);   // permanent, not a mind-control link
+    REQUIRE(w.fire_superweapon_at(0,SuperweaponType::GeneticConverter,4,4));
+    CHECK(w.units()[3].die_time>=0.0);CHECK(w.units()[4].die_time<0.0);
+    REQUIRE(w.units().size()==6);
+    CHECK(w.units()[5].image=="BRUTE");CHECK(w.units()[5].house==0);
+    World loaded(r.map);REQUIRE(save::load_world(loaded,save::save_world(w)));
+    CHECK(save::save_world(loaded)==save::save_world(w));
+}

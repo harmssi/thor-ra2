@@ -30,6 +30,7 @@
     <string name="deck_mode_paused">PAUSA</string>
     <string name="deck_side_allies">ALIADOS</string>
     <string name="deck_side_soviet">SOVIÉTICOS</string>
+    <string name="deck_side_yuri">YURI</string>
     <string name="deck_h_place">Coloca el edificio</string>
     <string name="deck_d_place">Toca el mapa en la pantalla superior. Mantén pulsado allí para cancelar.</string>
     <string name="deck_h_target">Elige un objetivo</string>

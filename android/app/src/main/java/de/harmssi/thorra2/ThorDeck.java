@@ -460,7 +460,8 @@ public class ThorDeck extends View {
         c.drawText(low ? str(R.string.deck_low_power) : str(R.string.deck_output_drain), px, 104 * s, lowLabel);
 
         // side + mode chip
-        String side = faction == 1 ? str(R.string.deck_side_soviet) : str(R.string.deck_side_allies);
+        String side = faction == 2 ? str(R.string.deck_side_yuri)
+                : faction == 1 ? str(R.string.deck_side_soviet) : str(R.string.deck_side_allies);
         String mode;
         boolean modal = true;
         if ((flags & ThorBridge.F_PLACING) != 0) {

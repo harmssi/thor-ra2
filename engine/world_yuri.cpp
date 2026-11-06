@@ -241,7 +241,8 @@ void World::step_yuri_workers(bool relocate) {
         auto& miner=units_[i];
         if ((ability_frame()+static_cast<unsigned>(i))%150!=0 || !active(miner) ||
             miner.moving() || miner.frozen || miner.manual_hold || miner.deploy_mission!=0 ||
-            miner.target>=0 || miner.target_building>=0 || miner.attack_cell_x>=0 || miner.tg.area_guard ||
+            miner.target>=0 || miner.target_building>=0 || miner.attack_cell_x>=0 ||
+            (miner.tg.area_guard && is_human(miner.house)) ||   // Thor RA2: the AI parks idle units in area guard
             miner.deploys_into<0 || miner.deploys_into>=static_cast<int>(btypes().size()) ||
             btypes()[miner.deploys_into].slave_count<=0) continue;
         int x=0,y=0;

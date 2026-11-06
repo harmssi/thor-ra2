@@ -4265,10 +4265,22 @@ void World::ai_raise_money(int h, HouseAiRec& rec) {
         return std::find(refinery_types_.begin(), refinery_types_.end(), type) != refinery_types_.end();
     };
     int refineries = 0, miners = 0;
+    const std::vector<BuildingTypeDef>& rbt = btypes();
     for (const Building& b : buildings_)
-        if (b.alive && b.house == h && b.state == Building::State::Idle && is_ref(b.type)) ++refineries;
-    for (const Unit& u : units_)
-        if (u.alive && u.die_time < 0.0 && u.house == h && u.is_harvester) ++miners;
+        if (b.alive && b.house == h && b.state == Building::State::Idle && is_ref(b.type)) {
+            ++refineries;
+            // Thor RA2: a Slave Miner refinery brings its own workers (Yuri has no harvester to buy).
+            if (b.type >= 0 && b.type < (int)rbt.size() && rbt[(std::size_t)b.type].slave_count > 0) ++miners;
+        }
+    for (const Unit& u : units_) {
+        if (!u.alive || u.die_time >= 0.0 || u.house != h) continue;
+        if (u.is_harvester) ++miners;
+        // A packed Slave Miner on its way to ore is refinery and miner at once.
+        else if (u.deploys_into >= 0 && u.deploys_into < (int)rbt.size() && rbt[(std::size_t)u.deploys_into].slave_count > 0) {
+            ++refineries;
+            ++miners;
+        }
+    }
     // Already in production: the original compares the remaining charge with
     // the money instead; the clone's queues pay as they go, so it waits.
     // A recovery target stays set (house+0x564c / +0x5650) until it stands.
@@ -4446,7 +4458,9 @@ void World::ai_try_fire_superweapon(int house, HouseAiRec& rec) {
         if (!sw_ready(house, t)) continue;
         switch (t) {
             case SuperweaponType::Nuke:
-            case SuperweaponType::LightningStorm: {
+            case SuperweaponType::LightningStorm:
+            case SuperweaponType::PsychicDominator:   // Thor RA2: aimed like the Nuke
+            case SuperweaponType::GeneticConverter: {
                 if (enemy < 0) break;
                 if (t == SuperweaponType::LightningStorm) {
                     bool raging = false;   // LightningStorm::IsActive (FUN_00539e30)

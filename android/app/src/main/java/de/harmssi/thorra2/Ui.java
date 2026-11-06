@@ -72,12 +72,15 @@ final class Ui {
     static Typeface mono() { return mono; }
     static Typeface monoBold() { return monoBold; }
 
+    // Thor RA2: faction 0 Allies, 1 Soviets, 2 Yuri.
+    static final int PURPLE = 0xFFB46CFF, PURPLE_2 = 0xFFD9B8FF;
+
     static int accent(int faction) {
-        return faction == 1 ? RED : AMBER;
+        return faction == 2 ? PURPLE : faction == 1 ? RED : AMBER;
     }
 
     static int accent2(int faction) {
-        return faction == 1 ? RED_2 : AMBER_2;
+        return faction == 2 ? PURPLE_2 : faction == 1 ? RED_2 : AMBER_2;
     }
 
     static int alpha(int color, float a) {

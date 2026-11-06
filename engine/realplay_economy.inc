@@ -214,6 +214,8 @@ ra2engine::SuperweaponType rp_sw_type_of(const std::string& type_upper) {
     if (type_upper == "PARADROP") return T::ParaDrop;
     if (type_upper == "AMERPARADROP") return T::AmerParaDrop;
     if (type_upper == "PSYCHICREVEAL") return T::PsychicReveal;
+    if (type_upper == "PSYCHICDOMINATOR") return T::PsychicDominator;   // Thor RA2: Yuri SWs
+    if (type_upper == "GENETICCONVERTER") return T::GeneticConverter;
     return T::None;
 }
 

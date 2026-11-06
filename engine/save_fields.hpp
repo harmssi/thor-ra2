@@ -405,6 +405,9 @@ template <class Ar> void fields(Ar& ar, SwParams& v) {   // W2-AN (save v9)
     io(ar, v.parachute_fall);   // W4-SQ-06 (save v16)
     io(ar, v.storm_wall_flags); io(ar, v.nuke_wall_flags);   // v25: W6-04-04
     io(ar, v.c4_verses); io(ar, v.c4_spread); io(ar, v.c4_pmax);   // v35: W7-05-09
+    io(ar, v.dom_damage); io(ar, v.dom_spread); io(ar, v.dom_pmax); io(ar, v.dom_verses);   // v56: Yuri SWs
+    io(ar, v.dom_capture_range); io(ar, v.mut_explosion); io(ar, v.mut_spread); io(ar, v.mut_verses);
+    io(ar, v.mut_inf_death); io(ar, v.mut_infantry);
 }
 template <class Ar> void fields(Ar& ar, SwStrike& v) {   // W2-AN (save v9)
     io(ar, v.kind); io(ar, v.house); io(ar, v.x); io(ar, v.y); io(ar, v.ox); io(ar, v.oy);

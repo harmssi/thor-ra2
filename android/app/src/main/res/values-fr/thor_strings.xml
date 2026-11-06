@@ -30,6 +30,7 @@
     <string name="deck_mode_paused">PAUSE</string>
     <string name="deck_side_allies">ALLIÉS</string>
     <string name="deck_side_soviet">SOVIÉTIQUES</string>
+    <string name="deck_side_yuri">YURI</string>
     <string name="deck_h_place">Placez le bâtiment</string>
     <string name="deck_d_place">Touchez la carte sur l\'écran du haut. Appui long pour annuler.</string>
     <string name="deck_h_target">Choisissez une cible</string>

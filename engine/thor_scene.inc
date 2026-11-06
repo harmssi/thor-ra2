@@ -167,7 +167,7 @@
         s[kHdrPowerOut] = pt.output;
         s[kHdrPowerDrain] = pt.drain;
         s[kHdrFlags] = flags;
-        s[kHdrFaction] = std::string(g_sidebar_mix) == "sidec02.mix" ? 1 : 0;
+        s[kHdrFaction] = std::string(g_sidebar_mix) == "sidec03.mix" ? 2 : std::string(g_sidebar_mix) == "sidec02.mix" ? 1 : 0;
         s[kHdrActiveTab] = active_tab_;
         int tabs = 0;
         for (int t = 0; t < 4; ++t)

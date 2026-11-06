@@ -3064,17 +3064,25 @@ BuildingAssets load_building_assets(const ra2assets::MixFile& ra2,
             }
     } catch (const std::exception&) {}
     std::cerr << "[sw] SW cameos loaded=" << ba.sw_cameos.size() << "\n";
-    try {
-        std::string name=rules.section_string("PsychicRevealSpecial","SidebarImage","psyricon");
-        if (name.find('.')==std::string::npos) name+=".shp";
-        const MixFile* owner=nullptr;std::string source;
-        if (const auto* entry=asset_fs().find(name,&owner,&source,false,true)) {
-            auto shp=ShpFile::load(owner->read(*entry));
-            if (shp.count()>0) ba.sw_cameos[static_cast<int>(ra2engine::SuperweaponType::PsychicReveal)]=std::move(shp);
-            ra2engine::diag::note("POWER_ART type=PsychicReveal file=%s source=%s",name.c_str(),source.c_str());
+    // YR superweapons: [<Special>] SidebarImage= from whichever archive has it.
+    const struct { ra2engine::SuperweaponType t; const char* sec; const char* def; } kYrIcons[] = {
+        {ra2engine::SuperweaponType::PsychicReveal, "PsychicRevealSpecial", "psyricon"},
+        {ra2engine::SuperweaponType::PsychicDominator, "PsychicDominatorSpecial", "pdomicon"},
+        {ra2engine::SuperweaponType::GeneticConverter, "GeneticConverterSpecial", "muteicon"}};
+    for (const auto& yi : kYrIcons) {
+        const char* tn = ra2engine::superweapon_type_name(yi.t);
+        try {
+            std::string name=rules.section_string(yi.sec,"SidebarImage",yi.def);
+            if (name.find('.')==std::string::npos) name+=".shp";
+            const MixFile* owner=nullptr;std::string source;
+            if (const auto* entry=asset_fs().find(name,&owner,&source,false,true)) {
+                auto shp=ShpFile::load(owner->read(*entry));
+                if (shp.count()>0) ba.sw_cameos[static_cast<int>(yi.t)]=std::move(shp);
+                ra2engine::diag::note("POWER_ART type=%s file=%s source=%s",tn,name.c_str(),source.c_str());
+            }
+        } catch(const std::exception& error) {
+            ra2engine::diag::note("POWER_ART missing type=%s reason=%s",tn,error.what());
         }
-    } catch(const std::exception& error) {
-        ra2engine::diag::note("POWER_ART missing type=PsychicReveal reason=%s",error.what());
     }
 
     // Shared death explosion (TWLT070) from conquer.mix + anim.pal (guarded;
@@ -5557,6 +5565,16 @@ static std::string thor_fnt_text(const ra2assets::Font& font, const std::string&
     return out;
 }
 #endif
+// Glyph codes of a string. Android: thor_fnt_text already made it single-byte
+// (Latin-1 / CP437), so each byte is a glyph; elsewhere the fork's UTF-8 decode.
+static std::vector<uint32_t> fnt_cps(const std::string& s) {
+#if defined(__ANDROID__)
+    return std::vector<uint32_t>(reinterpret_cast<const unsigned char*>(s.data()),
+                                 reinterpret_cast<const unsigned char*>(s.data()) + s.size());
+#else
+    return ra2assets::UFont::decode_utf8(s);
+#endif
+}
 // [Task 5] Pixel width of a string in the shell font (for centering labels).
 int fnt_text_width(const ra2assets::Font& font, const std::string& s_in) {
 #if defined(__ANDROID__)
@@ -5565,7 +5583,7 @@ int fnt_text_width(const ra2assets::Font& font, const std::string& s_in) {
     const std::string& s = s_in;
 #endif
     int w = 0;
-    for (uint32_t ch : ra2assets::UFont::decode_utf8(s)) {
+    for (uint32_t ch : fnt_cps(s)) {
         const int cw = font.width(ch);
         w += (cw > 0 ? cw : font.height() / 2);
     }
@@ -5586,7 +5604,7 @@ void draw_fnt_text(SDL_Renderer* ren, ra2engine::TextureCache& tc, const ra2asse
     const std::string& s = s_in;
 #endif
     int cx = x;
-    for (uint32_t ch : ra2assets::UFont::decode_utf8(s)) {
+    for (uint32_t ch : fnt_cps(s)) {
         const int w = font.width(ch);
         if (ch != ' ' && ch >= font.first() && ch <= font.last() && w > 0) {
             const ra2assets::FntGlyph& g = font.glyph(ch);
@@ -5635,7 +5653,7 @@ void draw_fnt_text_f(SDL_Renderer* ren, ra2engine::TextureCache& tc, const ra2as
     }
 #endif
     double cx = x;
-    for (uint32_t ch : ra2assets::UFont::decode_utf8(s)) {
+    for (uint32_t ch : fnt_cps(s)) {
         const int w = font.width(ch);
         if (ch != ' ' && ch >= font.first() && ch <= font.last() && w > 0) {
             const ra2assets::FntGlyph& g = font.glyph(ch);
