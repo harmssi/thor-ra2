@@ -97,12 +97,17 @@
             auto it = ba_.sw_cameos.find(idx);
             if (it != ba_.sw_cameos.end()) shp = &it->second;
             else if (ba_.sw_has_cameo) shp = &ba_.sb_nukeicon;
+            // the [<Type>Special] section carries the UIName (Name:YAPPET, ...)
+            const auto t = static_cast<ra2engine::SuperweaponType>(idx);
+            id = t == ra2engine::SuperweaponType::AmerParaDrop ? "AmericanParaDropSpecial"
+                                                                : std::string(ra2engine::superweapon_type_name(t)) + "Special";
         }
         std::string nm;
         if (!id.empty()) {   // like tt_ui_name, but UTF-8 (the deck draws real umlauts)
             const std::string lbl = pres_clean(rules_ini_.get(id, "UIName"));
             nm = lbl.empty() ? id : camp::csf_text_utf8(dir_, lbl);
             if (nm == lbl) nm = id;   // label missing from the CSF: the type id, not "Name:..."
+            if (kind == thor::kKindSuper && nm == id) nm.clear();   // the deck's generic label
         }
         thor::put_name(key, nm);
         std::vector<uint8_t> rgba;
