@@ -14,12 +14,12 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 
 /** Local confirmation only: never proof of ownership or a transfer of rights. */
-final class LegalNotice {
+public final class LegalNotice {
     private static final int VERSION = 1;
     private static SharedPreferences prefs(Context c) {
         return c.getSharedPreferences("legal_notice", Context.MODE_PRIVATE);
     }
-    static boolean accepted(Context c) { return prefs(c).getInt("version",0)==VERSION; }
+    public static boolean accepted(Context c) { return prefs(c).getInt("version",0)==VERSION; }
     private static String asset(Context c,String name) throws Exception {
         try(InputStream in=c.getAssets().open(name);ByteArrayOutputStream out=new ByteArrayOutputStream()) {
             byte[] b=new byte[8192];int n;
@@ -34,7 +34,7 @@ final class LegalNotice {
         view.setPadding(pad,pad,pad,pad);view.setTextIsSelectable(true);
         scroll.addView(view);return scroll;
     }
-    static void show(Activity a,Runnable after) {
+    public static void show(Activity a,Runnable after) {
         final String terms;
         try { terms=asset(a,"TERMS.txt"); }
         catch(Exception e) {
@@ -67,7 +67,7 @@ final class LegalNotice {
         });
         dialog.show();
     }
-    static void credits(Activity a) {
+    public static void credits(Activity a) {
         StringBuilder all=new StringBuilder();
         try {
             for(String file:new String[]{"CREDITS.md","LICENSE","THIRD_PARTY_NOTICES.md","LIBCXX-LICENSE.txt"})

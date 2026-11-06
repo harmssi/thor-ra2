@@ -60,4 +60,29 @@
     <string name="deck_groups_hint">MANTENER = GUARDAR</string>
     <string name="deck_act_group">Grupo %1$d seleccionado</string>
     <string name="deck_act_group_set">Grupo %1$d guardado</string>
+    <!-- Thor launcher -->
+    <string name="l_eyebrow">ELEGIR JUEGO</string>
+    <string name="l_subtitle">Dual-Screen Command Deck</string>
+    <string name="l_ra2_title">Red Alert 2</string>
+    <string name="l_ra2_text">Aliados y soviéticos · campañas · escaramuza</string>
+    <string name="l_ra2_short">Aliados contra soviéticos. Yuri no aparece en la escaramuza.</string>
+    <string name="l_yr_title">Yuri\'s Revenge</string>
+    <string name="l_yr_text">Con la facción de Yuri · escaramuza contra humano o IA</string>
+    <string name="l_yr_short">Tres bandos: aliados, soviéticos y Yuri. Yuri es jugable en escaramuza.</string>
+    <string name="l_import">ARCHIVOS</string>
+    <string name="l_zoom">ZOOM</string>
+    <string name="l_language">IDIOMA</string>
+    <string name="l_info">INFO</string>
+    <string name="l_ready">Archivos del juego listos</string>
+    <string name="l_missing">Faltan archivos: %d</string>
+    <string name="l_missing_tile">Importa primero los archivos del juego</string>
+    <string name="l_hint">A iniciar · cruceta / stick elegir · B salir</string>
+    <string name="l_mode">MODO</string>
+    <string name="l_version">VERSIÓN</string>
+    <string name="l_info_title">Thor RA2</string>
+    <string name="l_info_text">Red Alert 2 / Yuri\'s Revenge para la AYN Thor.\nRA2 Engine de Omar El Arab, facción Yuri de Bryle13 (RA2AndroidPort), port Thor de harmssi. Todo 0BSD.\nSin datos del juego; usa tus propios archivos.</string>
+    <string name="l_github">GitHub</string>
+    <string name="l_youtube">Vídeo</string>
+    <string name="l_close">Cerrar</string>
+    <string name="l_rules_note">El motor usa las reglas de Yuri\'s Revenge en ambos modos.</string>
 </resources>

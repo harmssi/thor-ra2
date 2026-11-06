@@ -116,10 +116,34 @@ Psychic Dominator und Genetic Mutator wurden auf dem Gerät nicht gefeuert, weil
 brauchen. Getestet sind sie im Unit-Test und im KI-Pfad. Controller-Stick-Kantenscrollen wurde nicht am Gerät
 getestet; es läuft über dieselbe `Input::pan`-Klemmung wie das Ziehen.
 
+## Thor-Launcher (Phase 2)
+
+- `ThorLauncher` ist jetzt der erste Bildschirm nach dem App-Start und läuft auf beiden Displays.
+  - Oben: eigener Titelbildschirm mit Wortmarke „THOR RA2“, Untertitel, Version und Radar-Sweep. Er spiegelt die
+    unten gewählte Kachel (Akzent und Kurztext).
+  - Unten: Kacheln „Red Alert 2“, „Yuri's Revenge“, Spieldateien, ZOOM, Sprache und Info (GitHub, Video).
+  - Bedienbar per Touch und Controller.
+- Designsprache und Tokens stehen in `docs/THOR-DESIGN.md`, Quelle ist `Ui.java`. Alliierte sind jetzt blau
+  (vorher amber).
+- Der Fork-Launcher (`SetupActivity`) ist nur noch der Bildschirm für die Spieldateien. Er heißt „GAME FILES“, und die
+  Terms laufen unter „Thor RA2“.
+- **Was „Red Alert 2“ ist:** Die Yuri-Fraktion ist in der Gefechts-Lobby ausgeblendet. Die Allied/Soviet-Kampagnen
+  stehen wie bisher unter Single Player vorn.
+- **Was es NICHT ist:** kein echtes Red Alert 2. Die Engine spielt in beiden Modi die Yuri's-Revenge-Regeln
+  (`rulesmd.ini`, YR-Einheiten wie der Boris-Ersatz, YR-Balance; siehe docs/gap/REMAINING.md, U-1).
+  YR-Gebäude, die alle Seiten bauen dürfen, bleiben ebenfalls.
+- Screenshots: `~/Desktop/thor-ra2-launcher/launcher_*`, `lobby_modus_ra2_ohne_yuri.png`, `deck_alliierte_blau.png`,
+  `deck_sowjets_rot.png`, `deck_yuri_violett.png`.
+- Offen beim Launcher:
+  - Ein abgedunkelter Hintergrund aus den Spieldateien ist nicht eingebaut. Er war erlaubt, aber nicht nötig.
+  - Der Info-Dialog ist ein System-Dialog und nicht im Deck-Stil.
+  - Ohne zweiten Bildschirm zeigt der Launcher oben nur den Titel, die Auswahl geht dann nur per Controller.
+
 ## Offen oder kaputt
 
-- **Launcher:** Er ist jetzt der des Forks (Branding „BRYLE13 / RA2 PORT“, Terms-Dialog „RA2AndroidPort“, nur
-  Englisch). Ein eigener Thor-Launcher ist Phase 2.
+- **Fork-Spieldateien-Bildschirm:** Er bleibt im Fork-Stil und ist nur auf Englisch. Er wird nur noch für Import und
+  Prüfung benutzt.
+- **Gefechts-Lobby:** Beim zweiten Öffnen blieb die Kartenvorschau schwarz. Beobachtet, nicht untersucht.
 - **Spielstände:** Das Format ist von 47 (v0.2.1) auf 56 gestiegen. Alte Spielstände laden nicht mehr. Sie werden nicht
   gelöscht, nur nicht mehr angeboten.
 - **Yuri-Mechaniken (laut Fork-Doku FIDELITY-AUDIT43 und YURI_CORE_TEST8):**

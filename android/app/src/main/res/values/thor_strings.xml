@@ -60,4 +60,29 @@
     <string name="deck_groups_hint">HOLD = SAVE</string>
     <string name="deck_act_group">Group %1$d selected</string>
     <string name="deck_act_group_set">Group %1$d saved</string>
+    <!-- Thor launcher -->
+    <string name="l_eyebrow">SELECT GAME</string>
+    <string name="l_subtitle">Dual-Screen Command Deck</string>
+    <string name="l_ra2_title">Red Alert 2</string>
+    <string name="l_ra2_text">Allies and Soviets · campaigns · skirmish</string>
+    <string name="l_ra2_short">Allies against Soviets. Yuri stays out of the skirmish lobby.</string>
+    <string name="l_yr_title">Yuri\'s Revenge</string>
+    <string name="l_yr_text">With the Yuri faction · skirmish against human or AI</string>
+    <string name="l_yr_short">Three sides: Allies, Soviets and Yuri. Yuri is playable in skirmish.</string>
+    <string name="l_import">GAME FILES</string>
+    <string name="l_zoom">ZOOM</string>
+    <string name="l_language">LANGUAGE</string>
+    <string name="l_info">INFO</string>
+    <string name="l_ready">Game files ready</string>
+    <string name="l_missing">Game files missing: %d</string>
+    <string name="l_missing_tile">Import the game files first</string>
+    <string name="l_hint">A start · D-pad / stick select · B exit</string>
+    <string name="l_mode">MODE</string>
+    <string name="l_version">VERSION</string>
+    <string name="l_info_title">Thor RA2</string>
+    <string name="l_info_text">Red Alert 2 / Yuri\'s Revenge for the AYN Thor.\nRA2 Engine by Omar El Arab, Yuri faction by Bryle13 (RA2AndroidPort), Thor port by harmssi. All 0BSD.\nNo game data included; uses your own files.</string>
+    <string name="l_github">GitHub</string>
+    <string name="l_youtube">Video</string>
+    <string name="l_close">Close</string>
+    <string name="l_rules_note">Engine plays Yuri\'s Revenge rules in both modes.</string>
 </resources>

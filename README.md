@@ -102,7 +102,7 @@ Engine changes are small and marked `Thor RA2`; with `thor::dual()` false the en
 
 - The game is the RA2 Engine beta (0.9), see [README.upstream.md](README.upstream.md#known-limitations). Yuri is playable in skirmish only (no Yuri campaign); several Yuri abilities are still approximations or missing, see [docs/YURI-THOR-INTEGRATION.md](docs/YURI-THOR-INTEGRATION.md).
 - Menu D-pad navigation jumps between the buttons, list entries and checkboxes; sliders (and some drop-down lists) still need the stick cursor. The in-game options menu uses the stick cursor.
-- The launcher is upstream's file check / import screen (English, German, Spanish, French).
+- On the `yuri-faction` branch the app opens on the Thor launcher (title on top, choice below: Red Alert 2 / Yuri's Revenge, game files, ZOOM, language, info). "Red Alert 2" only hides Yuri in the skirmish lobby; the engine always plays Yuri's Revenge rules. The game-files screen is the fork's importer (English).
 - The shell menu font has no ß; menus spell it "ss". Umlauts and accents are shown.
 - Android 8.0 or later (arm64); made and tested for the AYN Thor.
 

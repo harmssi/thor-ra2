@@ -60,4 +60,29 @@
     <string name="deck_groups_hint">MAINTENIR = ENREGISTRER</string>
     <string name="deck_act_group">Groupe %1$d sélectionné</string>
     <string name="deck_act_group_set">Groupe %1$d enregistré</string>
+    <!-- Thor launcher -->
+    <string name="l_eyebrow">CHOISIR LE JEU</string>
+    <string name="l_subtitle">Dual-Screen Command Deck</string>
+    <string name="l_ra2_title">Red Alert 2</string>
+    <string name="l_ra2_text">Alliés et Soviétiques · campagnes · escarmouche</string>
+    <string name="l_ra2_short">Alliés contre Soviétiques. Yuri reste hors du salon d\'escarmouche.</string>
+    <string name="l_yr_title">Yuri\'s Revenge</string>
+    <string name="l_yr_text">Avec la faction Yuri · escarmouche contre humain ou IA</string>
+    <string name="l_yr_short">Trois camps : Alliés, Soviétiques et Yuri. Yuri est jouable en escarmouche.</string>
+    <string name="l_import">FICHIERS</string>
+    <string name="l_zoom">ZOOM</string>
+    <string name="l_language">LANGUE</string>
+    <string name="l_info">INFO</string>
+    <string name="l_ready">Fichiers du jeu prêts</string>
+    <string name="l_missing">Fichiers manquants : %d</string>
+    <string name="l_missing_tile">Importez d\'abord les fichiers du jeu</string>
+    <string name="l_hint">A lancer · croix / stick choisir · B quitter</string>
+    <string name="l_mode">MODE</string>
+    <string name="l_version">VERSION</string>
+    <string name="l_info_title">Thor RA2</string>
+    <string name="l_info_text">Red Alert 2 / Yuri\'s Revenge pour l\'AYN Thor.\nRA2 Engine d\'Omar El Arab, faction Yuri de Bryle13 (RA2AndroidPort), portage Thor par harmssi. Tout en 0BSD.\nAucune donnée de jeu incluse ; utilise vos propres fichiers.</string>
+    <string name="l_github">GitHub</string>
+    <string name="l_youtube">Vidéo</string>
+    <string name="l_close">Fermer</string>
+    <string name="l_rules_note">Le moteur applique les règles de Yuri\'s Revenge dans les deux modes.</string>
 </resources>

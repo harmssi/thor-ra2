@@ -1,4 +1,4 @@
-RA2AndroidPort — Terms of Use and game-file confirmation
+Thor RA2 — Terms of Use and game-file confirmation
 Version 1 — 25 October 2026
 
 UNOFFICIAL PROJECT
@@ -18,7 +18,8 @@ of purchase or a grant of rights from EA.
 
 SOFTWARE LICENSES AND CREDITS
 Original engine: Omar El Arab, https://github.com/omarelarab/ra2-engine, 0BSD.
-Android fork modifications: Bryle13 (shietgrupe-cpu13), with Codex assistance.
+Android fork modifications and Yuri faction: Bryle13 (shietgrupe-cpu13), RA2AndroidPort, 0BSD.
+Thor RA2 (command deck, launcher, AYN Thor port): harmssi, 0BSD.
 The original LICENSE and THIRD_PARTY_NOTICES.md remain applicable. See the
 launcher's Credits & licenses button for their full text and dependency notices.
 These terms do not restrict rights granted by the software's open-source
@@ -44,7 +45,7 @@ This is experimental software. Keep backups of saves; engine updates can change
 save compatibility. Software is provided as-is under its applicable licenses,
 subject to rights and remedies that local law does not permit excluding.
 No disclaimer or confirmation guarantees legal protection or EA permission.
-For support and source: https://github.com/shietgrupe-cpu13/RA2AndroidPort/issues
+For support and source: https://github.com/harmssi/thor-ra2/issues
 Do not post retail archives, signing keys or private information in public issues.
 
 Continue only if you agree to these terms and confirm that you have the rights

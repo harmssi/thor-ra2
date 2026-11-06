@@ -111,7 +111,7 @@ public class SetupActivity extends Activity {
     private Thread importThread;
     private volatile boolean cancelImport = false;
 
-    static File dataDir(Activity a) {
+    public static File dataDir(Activity a) {
         File ext = a.getExternalFilesDir(null);
         File d = new File(ext != null ? ext : a.getFilesDir(), "ra2");
         //noinspection ResultOfMethodCallIgnored
@@ -119,7 +119,7 @@ public class SetupActivity extends Activity {
         return d;
     }
 
-    static List<String> missing(File dir, boolean requiredOnly) {
+    public static List<String> missing(File dir, boolean requiredOnly) {
         List<String> m = new ArrayList<>();
         for (int i = 0; i < (requiredOnly ? REQUIRED : FILES.length); ++i) {
             File f = new File(dir, FILES[i]);
@@ -203,13 +203,13 @@ public class SetupActivity extends Activity {
                 ViewGroup.LayoutParams.WRAP_CONTENT,Gravity.TOP|Gravity.CENTER_HORIZONTAL));
         page.addView(centered);
 
-        TextView eyebrow=label("BRYLE13  /  ANDROID EDITION",11,theme()[2]);
+        TextView eyebrow=label("THOR RA2  /  AYN THOR",11,theme()[2]);
         eyebrow.setLetterSpacing(0.12f);
         root.addView(eyebrow);
-        title = label("RA2 PORT", 36, Color.rgb(244,240,223));
+        title = label("GAME FILES", 36, Color.rgb(244,240,223));
         title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         root.addView(title);
-        root.addView(label("Your battlefield. Anywhere.",16,Color.rgb(160,182,193)));
+        root.addView(label("Import, check or update your own Red Alert 2 / Yuri's Revenge files.",16,Color.rgb(160,182,193)));
         TextView hero=label("YURI'S REVENGE\n\nAllied. Soviet. Yuri.\nChoose your side. Build your legacy.",18,Color.rgb(237,226,189));
         hero.setTypeface(Typeface.DEFAULT,Typeface.BOLD);
         hero.setLineSpacing(dp(3),1f);
@@ -219,7 +219,8 @@ public class SetupActivity extends Activity {
         heroArt.setCornerRadius(dp(20));heroArt.setStroke(dp(1),Color.rgb(91,110,104));
         hero.setBackground(heroArt);
         LinearLayout.LayoutParams heroSpace=new LinearLayout.LayoutParams(-1,-2);
-        heroSpace.setMargins(0,dp(20),0,dp(16));root.addView(hero,heroSpace);
+        heroSpace.setMargins(0,dp(20),0,dp(16));   // Thor RA2: the Thor launcher is the title screen
+
         readiness = label("Checking game files...", 15, Color.rgb(140, 225, 185));
         readiness.setBackground(panel(Color.rgb(20, 39, 43), Color.rgb(45, 92, 86)));
         readiness.setPadding(dp(16), dp(12), dp(16), dp(12));
@@ -284,7 +285,7 @@ public class SetupActivity extends Activity {
         sb.append("After a crash, tap Share game report before starting another game.\n\n");
         sb.append(getString(R.string.setup_folder)).append("\n  ").append(dir.getAbsolutePath()).append("\n\n");
         // W6-06-05: opened to add / replace files with everything present.
-        title.setText("RA2 PORT");
+        title.setText("GAME FILES");
         readiness.setText(copying ? "IMPORTING GAME FILES..." :
                 (req.isEmpty() ? "READY TO PLAY - Yuri's Revenge" :
                  "SETUP REQUIRED - " + req.size() + " required files missing"));

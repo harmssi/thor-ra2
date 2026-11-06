@@ -60,4 +60,29 @@
     <string name="deck_groups_hint">HALTEN = SPEICHERN</string>
     <string name="deck_act_group">Gruppe %1$d ausgewählt</string>
     <string name="deck_act_group_set">Gruppe %1$d gespeichert</string>
+    <!-- Thor launcher -->
+    <string name="l_eyebrow">SPIEL WÄHLEN</string>
+    <string name="l_subtitle">Dual-Screen Command Deck</string>
+    <string name="l_ra2_title">Red Alert 2</string>
+    <string name="l_ra2_text">Alliierte und Sowjets · Kampagnen · Gefecht</string>
+    <string name="l_ra2_short">Alliierte gegen Sowjets. Yuri bleibt aus der Gefechts-Lobby draußen.</string>
+    <string name="l_yr_title">Yuri\'s Revenge</string>
+    <string name="l_yr_text">Mit Yuri-Fraktion · Gefecht gegen Mensch oder KI</string>
+    <string name="l_yr_short">Drei Seiten: Alliierte, Sowjets und Yuri. Yuri ist im Gefecht spielbar.</string>
+    <string name="l_import">SPIELDATEIEN</string>
+    <string name="l_zoom">ZOOM</string>
+    <string name="l_language">SPRACHE</string>
+    <string name="l_info">INFO</string>
+    <string name="l_ready">Spieldateien bereit</string>
+    <string name="l_missing">Spieldateien fehlen: %d</string>
+    <string name="l_missing_tile">Erst die Spieldateien importieren</string>
+    <string name="l_hint">A Start · Steuerkreuz / Stick wählen · B Beenden</string>
+    <string name="l_mode">MODUS</string>
+    <string name="l_version">VERSION</string>
+    <string name="l_info_title">Thor RA2</string>
+    <string name="l_info_text">Red Alert 2 / Yuri\'s Revenge für den AYN Thor.\nRA2 Engine von Omar El Arab, Yuri-Fraktion von Bryle13 (RA2AndroidPort), Thor-Port von harmssi. Alles 0BSD.\nKeine Spieldaten enthalten; nutzt deine eigenen Dateien.</string>
+    <string name="l_github">GitHub</string>
+    <string name="l_youtube">Video</string>
+    <string name="l_close">Schließen</string>
+    <string name="l_rules_note">Die Engine spielt in beiden Modi die Yuri\'s-Revenge-Regeln.</string>
 </resources>

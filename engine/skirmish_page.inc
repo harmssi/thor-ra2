@@ -164,7 +164,7 @@ class SkirmishSetupScene : public Scene {
 public:
     SkirmishSetupScene(const Rules& rules, bool no_audio, const MenuArt& art)
         : rules_(rules), no_audio_(no_audio), art_(art) {
-        countries_ = gf_lobby_countries(!rules.section_string("YuriCountry","Side","").empty());
+        countries_ = gf_lobby_countries(thor::yuri_allowed() && !rules.section_string("YuriCountry","Side","").empty());
         text_.load(countries_);
         // [Rules] [MultiplayerDialogSettings] defaults + slider ranges.
         auto ri = [&](const char* k, int d) {
