@@ -8,18 +8,18 @@
 
 ## Quick start
 
-1. **Install the APK.** Download `ThorRA2-v0.2.0.apk` from [Releases](../../releases) on the Thor. In Chrome tap **Download anyway**, open the file, the **Package installer** asks for permission: **Settings → Allow from this source**, go back (you land in the download list) and **tap the APK again**, then **Install**.
+1. **Install the APK.** Download `ThorRA2-v0.3.0.apk` from [Releases](../../releases) on the Thor. In Chrome tap **Download anyway**, open the file, the **Package installer** asks for permission: **Settings → Allow from this source**, go back (you land in the download list) and **tap the APK again**, then **Install**.
 2. **Get your game files.** From your Red Alert 2 / Yuri's Revenge install (Steam: `steamapps/common/Command & Conquer Red Alert II`, or The First Decade / EA App) copy every `.mix` and `.csf` file, about 1 GB. Required: `ra2.mix`, `ra2md.mix`, `language.mix`, `multimd.mix`. Recommended: `langmd.mix`, `theme.mix`, `thememd.mix`, `maps01.mix`, `maps02.mix`, `mapsmd03.mix`, `expandmd01.mix`, the `movies*.mix` / `movmd03.mix` archives.
 3. **Put them on the Thor** in a folder `Download/RA2` (USB file transfer or `adb push`).
-4. **Start Thor RA2.** Tap **Import game files**, open the `RA2` folder, **Use this folder → Allow**. The files are copied into the app's own folder (`Android/data/de.harmssi.thorra2/files/ra2/`) and the game starts. Next time it starts straight away.
+4. **Start Thor RA2.** The launcher opens on both screens. Tap **Game files** → **Import or update game files**, open the `RA2` folder, **Use this folder → Allow**. The files are copied into the app's own folder (`Android/data/de.harmssi.thorra2/files/ra2/`). Then pick **Red Alert 2** or **Yuri's Revenge** on the bottom screen.
 
 **Permissions:** none to grant. The import uses Android's folder picker (no storage permission). Internet / Wi-Fi state are only used for LAN and online multiplayer.
 
-If it works for you, a ⭐ on GitHub helps.
+If it works for you, a ⭐ on GitHub helps – and [subscribing on YouTube](https://www.youtube.com/@toravomusic?sub_confirmation=1) helps me bring more ports to the Thor.
 
 ---
 
-Thor RA2 is an Android (arm64) build of [RA2 Engine](https://github.com/omarelarab/ra2-engine) by Omar El Arab, an open-source engine for *Command & Conquer: Red Alert 2 – Yuri's Revenge*, made for the AYN Thor dual-screen handheld:
+Thor RA2 is an Android (arm64) build of [RA2 Engine](https://github.com/omarelarab/ra2-engine) by Omar El Arab, with the Yuri faction from [RA2AndroidPort](https://github.com/shietgrupe-cpu13/RA2AndroidPort) by Bryle13 (shietgrupe-cpu13); an open-source engine for *Command & Conquer: Red Alert 2 – Yuri's Revenge*, made for the AYN Thor dual-screen handheld:
 
 - **Top screen (1920×1080):** only the map. The sidebar is gone and the tactical view uses the full width. Menus, briefings and movies are unchanged.
 - **Bottom screen (1240×1080):** a touch command deck with credits, a power meter (red on low power), the radar (tap or drag to move the camera, a "no signal" look without a radar station or power), REPAIR / SELL / MENU / ZOOM, control groups 1–5, the superweapons with their timers, and four build tabs (buildings, defenses, infantry, vehicles) with the cameos, build progress, READY and ON HOLD.
@@ -29,7 +29,7 @@ Without a second screen everything stays as in RA2 Engine (sidebar on the right)
 
 > Thor RA2 ships **no game data**. It runs on the original files from your own copy of the game (Red Alert 2 with Yuri's Revenge, e.g. *The First Decade*, Origin / EA App or Steam). Cameos and the radar are rendered at runtime from those files.
 
-Status: **v0.2.1** (ZOOM for the game picture, `expandmd01.mix` import) (see [Known limitations](#known-limitations)).
+Status: **v0.3.0** (Yuri faction (beta), launcher, camera stays inside the map) (see [Known limitations](#known-limitations)).
 
 ---
 
@@ -39,12 +39,13 @@ Status: **v0.2.1** (ZOOM for the game picture, `expandmd01.mix` import) (see [Kn
 |---|---|
 | **Dual screen** | The deck is an Android `Presentation` on display 4 (`FLAG_NOT_FOCUSABLE`, so the controller stays with the game). Without a second screen, or with the intent extra `single=true`, the original sidebar is shown on the top screen. |
 | **Engine-faithful** | Every deck action goes through the engine's normal sidebar path: a cameo tap runs the sidebar's cameo click (start, queue, hold, cancel, place), a tab tap is the tab button, REPAIR / SELL are the sidebar buttons, a radar tap centres the view like a radar click, MENU is the Esc key. The deck never changes game state directly. |
-| **Build deck** | Tap = build, or place when READY (then tap the spot on the top screen). Buildings: tap again while building = hold. Units: every tap queues one more (×N badge). Long-press = hold, then cancel. The progress sweep is drawn over the cameo. The accent color follows the side: amber for the Allies, red for the Soviets. |
+| **Build deck** | Tap = build, or place when READY (then tap the spot on the top screen). Buildings: tap again while building = hold. Units: every tap queues one more (×N badge). Long-press = hold, then cancel. The progress sweep is drawn over the cameo. The accent color follows the side: blue for the Allies, red for the Soviets, violet for Yuri. |
 | **Radar** | Rendered from the engine's own radar picture (terrain, ore, shroud, buildings, units) with the camera frame. Tap or drag to scroll the map. |
 | **Control groups** | Groups 1–5 with their unit count. Tap = select the group (the engine's `1`–`5` key), tap again = camera to the group, long-press = save the current selection as that group (`Ctrl`+`1`–`5`). A group is highlighted while it is the whole selection. |
 | **Zoom** | **ZOOM** on the deck cycles the game picture 100 % → 125 % → 150 % live, mid-game (bigger units and infantry, less map on screen). The engine just uses a smaller canvas and scales it to the top screen; touch, selection box, radar frame and group camera follow. The setting is kept. |
 | **Superweapons** | Each superweapon with its cameo, a countdown and a charge bar; tap when READY to pick a target on the top screen. |
 | **Controller** | Left stick = cursor, A = left click, B = right click, right stick / D-pad = scroll, Start = options menu, Back = centre on base, X = deploy, Y = stop, L3 (hold) = force fire. **L1 / R1** switch the deck's build tab. In the shell menus the **D-pad** jumps the cursor from button to button, A presses. |
+| **Launcher** | Title screen on top, choice on the bottom screen: **Red Alert 2** (Allies and Soviets; Yuri hidden in the skirmish lobby) or **Yuri's Revenge** (Yuri playable for humans and the AI), Game files, ZOOM, language, info. Touch or controller (D-pad / stick, A start, B exit). The engine plays Yuri's Revenge rules in both modes. |
 | **Languages** | Deck in English (default), Deutsch, Español, Français, following the system / per-app language. |
 
 ## Game data
@@ -93,7 +94,7 @@ Engine changes are small and marked `Thor RA2`; with `thor::dual()` false the en
 
 ## Changelog
 
-- **0.3.0-beta1** (branch `yuri-faction`, not released): playable Yuri faction in skirmish (human and computer players), Yuri cameos, power and superweapons (Psychic Dominator, Genetic Mutator) on the deck. Engine and gameplay work from the [RA2AndroidPort fork](https://github.com/shietgrupe-cpu13/RA2AndroidPort) by Bryle13 (shietgrupe-cpu13), see [docs/YURI-THOR-INTEGRATION.md](docs/YURI-THOR-INTEGRATION.md).
+- **0.3.0**: **Yuri faction (beta)** in skirmish for human and computer players, with Psychic Dominator and Genetic Mutator; engine and gameplay work from [RA2AndroidPort](https://github.com/shietgrupe-cpu13/RA2AndroidPort) by Bryle13 (shietgrupe-cpu13), see [docs/YURI-THOR-INTEGRATION.md](docs/YURI-THOR-INTEGRATION.md). New launcher on both screens (Red Alert 2 / Yuri's Revenge). The camera stays inside the map (also with ZOOM). Deck in faction colors (Allies blue, Soviets red, Yuri violet). New game-files screen in EN/DE/ES/FR. Saves from 0.2.x do not load (they are kept).
 - **0.2.1**: ZOOM button on the deck (100 / 125 / 150 %, live, saved); the importer now also copies `expandmd01.mix` (and other `expandmdNN.mix`).
 - **0.2.0**: control groups 1–5 on the deck (tap / double tap / long-press, unit count); D-pad navigation in the shell menus; radar panel slightly smaller.
 - **0.1.0**: first release.
@@ -102,7 +103,10 @@ Engine changes are small and marked `Thor RA2`; with `thor::dual()` false the en
 
 - The game is the RA2 Engine beta (0.9), see [README.upstream.md](README.upstream.md#known-limitations). Yuri is playable in skirmish only (no Yuri campaign); several Yuri abilities are still approximations or missing, see [docs/YURI-THOR-INTEGRATION.md](docs/YURI-THOR-INTEGRATION.md).
 - Menu D-pad navigation jumps between the buttons, list entries and checkboxes; sliders (and some drop-down lists) still need the stick cursor. The in-game options menu uses the stick cursor.
-- On the `yuri-faction` branch the app opens on the Thor launcher (title on top, choice below: Red Alert 2 / Yuri's Revenge, game files, ZOOM, language, info). "Red Alert 2" only hides Yuri in the skirmish lobby; the engine always plays Yuri's Revenge rules. The game-files screen is the fork's importer (English).
+- "Red Alert 2" in the launcher only hides Yuri in the skirmish lobby; the engine always plays Yuri's Revenge rules.
+- Yuri faction is **beta**: Magnetron lift, Floating Disc drain, Chaos Drone berserk, Grinder / Bio Reactor specials and Yuri Prime building capture are approximations or missing; Psychic Dominator and Genetic Mutator play without their animations; Spy Plane and Force Shield are not there.
+- Saves from 0.2.x do not load in 0.3.0 (save format changed); they are not deleted.
+- Ares / Phobos overhaul mods such as Mental Omega do not run: they patch the original Windows game, this is a separate engine.
 - The shell menu font has no ß; menus spell it "ss". Umlauts and accents are shown.
 - Android 8.0 or later (arm64); made and tested for the AYN Thor.
 
@@ -121,13 +125,15 @@ Engine changes are small and marked `Thor RA2`; with `thor::dual()` false the en
 
 ## Deutsch
 
-Thor RA2 bringt Red Alert 2 / Yuri's Revenge nativ auf den AYN Thor, auf Basis der quelloffenen RA2 Engine von Omar El Arab. Oben läuft nur die Karte über die volle Breite, ohne Seitenleiste. Unten liegt das Kommando-Deck mit Credits, Strombalken (rot bei Strommangel), Radar (Tippen oder Ziehen bewegt die Kamera, ohne Radarstation oder Strom „kein Signal“), REPARIEREN / VERKAUFEN / MENÜ, den Superwaffen mit Countdown und vier Bau-Reitern (Gebäude, Verteidigung, Infanterie, Fahrzeuge) mit den Cameos aus den eigenen Spieldateien, Baufortschritt, BEREIT und ANGEHALTEN.
+Thor RA2 bringt Red Alert 2 / Yuri's Revenge nativ auf den AYN Thor, auf Basis der quelloffenen RA2 Engine von Omar El Arab und der Yuri-Fraktion aus RA2AndroidPort von Bryle13 (shietgrupe-cpu13). Oben läuft nur die Karte über die volle Breite, ohne Seitenleiste. Unten liegt das Kommando-Deck mit Credits, Strombalken (rot bei Strommangel), Radar (Tippen oder Ziehen bewegt die Kamera, ohne Radarstation oder Strom „kein Signal“), REPARIEREN / VERKAUFEN / MENÜ, den Superwaffen mit Countdown und vier Bau-Reitern (Gebäude, Verteidigung, Infanterie, Fahrzeuge) mit den Cameos aus den eigenen Spieldateien, Baufortschritt, BEREIT und ANGEHALTEN.
 
 Jede Deck-Aktion läuft über den normalen Sidebar-Pfad der Engine, das Deck schreibt nie direkt in den Spielzustand. Tippen = bauen bzw. bei BEREIT platzieren (dann oben auf den Bauplatz tippen). Lange drücken = anhalten, dann abbrechen. L1 / R1 wechseln den Reiter. Ohne zweiten Bildschirm bleibt alles wie im Original.
 
 **Controller:** linker Stick = Zeiger, A = Linksklick, B = Rechtsklick, rechter Stick / Steuerkreuz = Karte scrollen, Start = Optionsmenü, Back = zur Basis, X = Entfalten, Y = Stopp, L3 halten = Zwangsfeuer.
 
 **Daten:** Alle `.mix`- und `.csf`-Dateien aus der eigenen Red-Alert-2-Installation (mit Yuri's Revenge) nach `/sdcard/Android/data/de.harmssi.thorra2/files/ra2/` kopieren, per Import im Startbildschirm oder mit `thor/copy-data.sh` über adb. Es werden keine Spieldaten mitgeliefert oder heruntergeladen.
+
+**Neu in 0.3.0:** Yuri-Fraktion (Beta) im Gefecht für Mensch und KI, mit Psychic Dominator und Genetic Mutator. Neuer Launcher auf beiden Bildschirmen (Red Alert 2 / Yuri's Revenge; die Engine spielt in beiden Modi die Yuri's-Revenge-Regeln). Die Kamera bleibt in der Karte, auch mit ZOOM. Deck in Fraktionsfarben, neuer Spieldateien-Bildschirm. Spielstände aus 0.2.x laden nicht mehr (sie bleiben erhalten).
 
 **Bauen:** `thor/build.sh` (Docker-Image `thor-build` mit NDK 27.2, SDK 35, Gradle 8.9) erzeugt `dist/ThorRA2.apk`.
 
@@ -137,6 +143,10 @@ Command & Conquer, Red Alert und Yuri's Revenge sind Marken von Electronic Arts 
 
 Thor RA2 lleva Red Alert 2 / Yuri's Revenge de forma nativa a la AYN Thor, basado en RA2 Engine. La pantalla superior muestra solo el mapa; la inferior es un panel de mando táctil con créditos, energía, radar, superarmas y construcción. Necesitas tu propia copia del juego: copia los archivos `.mix` y `.csf` a la carpeta indicada arriba.
 
+**Novedades en 0.3.0:** facción de Yuri (beta) en escaramuza para humanos e IA, con Dominador Psíquico y Mutador Genético; nuevo lanzador en ambas pantallas (Red Alert 2 / Yuri's Revenge); la cámara se queda dentro del mapa; panel en los colores de cada bando; nueva pantalla de archivos del juego. Las partidas guardadas de 0.2.x no se cargan (no se borran). Facción de Yuri: Bryle13 (shietgrupe-cpu13, RA2AndroidPort); motor: Omar El Arab.
+
 ## Français
 
 Thor RA2 apporte Red Alert 2 / Yuri's Revenge en natif sur l'AYN Thor, basé sur RA2 Engine. L'écran du haut affiche uniquement la carte ; celui du bas est un panneau de commandement tactile avec crédits, énergie, radar, superarmes et construction. Il vous faut votre propre exemplaire du jeu : copiez les fichiers `.mix` et `.csf` dans le dossier indiqué ci-dessus.
+
+**Nouveautés 0.3.0 :** faction Yuri (bêta) en escarmouche pour les joueurs et l'IA, avec le Dominateur psychique et le Mutateur génétique ; nouveau lanceur sur les deux écrans (Red Alert 2 / Yuri's Revenge) ; la caméra reste dans la carte ; panneau aux couleurs de chaque camp ; nouvel écran des fichiers du jeu. Les sauvegardes 0.2.x ne se chargent pas (elles sont conservées). Faction Yuri : Bryle13 (shietgrupe-cpu13, RA2AndroidPort) ; moteur : Omar El Arab.
