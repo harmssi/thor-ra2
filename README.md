@@ -4,7 +4,13 @@
 
 > Not affiliated with, endorsed by or sponsored by Electronic Arts. No game data included: you need your own copy of Red Alert 2 with Yuri's Revenge.
 
-▶ **[Watch the install guide](https://youtu.be/hMupGiEim60)** (3 min) · **[Showcase video](https://youtu.be/DOWgL-C954M)**
+▶ **[Watch the install guide](https://youtu.be/hMupGiEim60)** (3 min) · **[Showcase video](https://youtu.be/DOWgL-C954M)** · **[0.3.0 Yuri update](https://youtu.be/Or8qxMfXrh4)**
+
+| Launcher (top + bottom screen) | Playing Yuri | Deck in your faction's colour |
+|---|---|---|
+| ![Thor RA2 launcher on both screens](docs/screenshots/launcher.jpg) | ![Yuri base on the top screen, command deck on the bottom screen](docs/screenshots/ingame-yuri.jpg) | ![Command deck for Allies, Soviets and Yuri](docs/screenshots/deck-factions.jpg) |
+
+<sub>Real screenshots from an AYN Thor (deck language follows the system language, German here).</sub>
 
 Made a video about this? [Open an issue](../../issues/new) and I'll link it here.
 
