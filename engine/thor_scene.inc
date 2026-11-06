@@ -167,7 +167,10 @@
         s[kHdrPowerOut] = pt.output;
         s[kHdrPowerDrain] = pt.drain;
         s[kHdrFlags] = flags;
-        s[kHdrFaction] = std::string(g_sidebar_mix) == "sidec03.mix" ? 2 : std::string(g_sidebar_mix) == "sidec02.mix" ? 1 : 0;
+        {   // the player's side (the sidebar mix falls back to Allied chrome when sidec03.mix is missing)
+            const ra2engine::World::Side sd = world_.house_side(local_house_);
+            s[kHdrFaction] = sd == ra2engine::World::Side::Yuri ? 2 : sd == ra2engine::World::Side::Soviet ? 1 : 0;
+        }
         s[kHdrActiveTab] = active_tab_;
         int tabs = 0;
         for (int t = 0; t < 4; ++t)

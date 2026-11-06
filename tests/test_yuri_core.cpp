@@ -1282,3 +1282,19 @@ TEST_CASE("Thor RA2: Psychic Dominator captures for good, Genetic Mutator makes 
     World loaded(r.map);REQUIRE(save::load_world(loaded,save::save_world(w)));
     CHECK(save::save_world(loaded)==save::save_world(w));
 }
+
+TEST_CASE("Thor RA2: the LocalSize clamp holds after a viewport change (ZOOM)") {
+    Rig r;World w(r.map);Camera cam;
+    Input in(w,cam,1920,1080);
+    // view rect [-cam.x, -cam.x+view_w) must stay inside the limits at every zoom
+    for(double z:{1.0,1.25,1.5}) {
+        const int vw=int(1920/z),vh=int(1080/z);
+        in.set_viewport(vw,vh);
+        in.set_view_limits(-3000,0,3000,2400);
+        for(int dir:{-1,1}) {
+            in.pan(dir*100000,dir*100000);
+            CHECK(-cam.x>=-3000);CHECK(-cam.x+vw<=3000);
+            CHECK(-cam.y>=0);CHECK(-cam.y+vh<=2400);
+        }
+    }
+}

@@ -258,6 +258,7 @@
                 if (view_set_[b.arg - 1]) {
                     cam_.x = view_cam_[b.arg - 1][0];
                     cam_.y = view_cam_[b.arg - 1][1];
+                    input_.pan(0, 0);   // clamp (the view may have been saved at another zoom)
                 }
                 return true;
             case C::SidebarUp: strip_scroll(-1); return true;

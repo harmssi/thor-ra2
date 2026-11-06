@@ -7449,6 +7449,7 @@ public:
             const double cx=-cam_.x+playfield_w_/(2*old),cy=-cam_.y+kWinH/(2*old);
             input_.set_screen_zoom(world_zoom_);
             input_.set_viewport(int(playfield_w_/world_zoom_),int(kWinH/world_zoom_));
+            apply_local_limits();   // Thor RA2: set_viewport reset the clamp to the terrain default
             cam_.x=int(std::lround(playfield_w_/(2*world_zoom_)-cx));
             cam_.y=int(std::lround(kWinH/(2*world_zoom_)-cy));input_.pan(0,0);
             return;
@@ -7819,6 +7820,10 @@ public:
             // W2-GA-05: the map's [Lighting] (tiles baked per height + ambient).
             light_.load(map_ini, a_.pal);
             g_light = &light_;
+            if (cfg_.campaign_map.empty()) {   // Thor RA2: the view stops at the map's LocalSize
+                skirmish_local_ = ra2engine::parse_map_local_size(map_ini);
+                apply_local_limits();
+            }
             turrets_.load(ra2_, dir_, rules_ini_, ba_, ba_.unit_pal);   // W2-GA-13
             g_turrets = &turrets_;
             ra2engine::set_terrain_level_palettes(light_.active ? &light_.level_pals : nullptr);
@@ -8100,6 +8105,7 @@ public:
     void apply_save(const ra2engine::save::SceneSave& s) {
         cam_.x = s.cam_x;
         cam_.y = s.cam_y;
+        input_.pan(0, 0);   // clamp
         active_tab_ = (s.active_tab >= 0 && s.active_tab <= 3) ? s.active_tab : 0;
         buildable_ = tab_buildable(active_tab_);
         lay_ = ra2engine::SidebarLayout::compute(kWinW, kWinH, buildable_);
@@ -8903,6 +8909,10 @@ private:
         }
     }
     void apply_local_limits() {
+        // Thor RA2: a skirmish clamps to its map's LocalSize too (the
+        // original's TacticalClass clamp has no campaign-only branch); before,
+        // the default terrain clamp let half a screen of black past each edge.
+        const ra2engine::MapLocalSize& local_ = this->local_.valid ? this->local_ : skirmish_local_;
         if (local_.valid) {
             // [RE: TacticalClass clamp FUN_006d7bb0 (CONFIRMED), in the
             // original's pixel space (cell centre x = 30*(cx-cy), y =
@@ -8925,6 +8935,7 @@ private:
         return ra2engine::within_usable_area(local_, cx, cy, mc ? mc->level : 0);
     }
     ra2engine::MapLocalSize local_;   // invalid (no limits) in a skirmish
+    ra2engine::MapLocalSize skirmish_local_;   // Thor RA2: a skirmish map's LocalSize, view clamp only
     // Word-wrapped text block (the 5x7 glyph font, `cols` characters per line).
     static int draw_wrapped(SDL_Renderer* ren, const std::string& text, int x, int y, int cols,
                             int scale, int max_y, Uint8 r, Uint8 g, Uint8 b) {

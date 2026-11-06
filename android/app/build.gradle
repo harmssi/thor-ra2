@@ -65,8 +65,8 @@ if (keystorePropsFile.exists()) {
 }
 
 // Thor RA2: the AYN Thor is arm64; -Pthor.abis=arm64-v8a,x86_64 for the emulator.
-def thorVersionCode = (project.findProperty('thor.versionCode') ?: '3').toString().toInteger()
-def thorVersionName = (project.findProperty('thor.versionName') ?: '0.2.1').toString()   // engine version: native banner
+def thorVersionCode = (project.findProperty('thor.versionCode') ?: '4').toString().toInteger()
+def thorVersionName = (project.findProperty('thor.versionName') ?: '0.3.0-beta1').toString()   // engine version: native banner
 def thorCmakeVersion = (project.findProperty('thor.cmakeVersion') ?: '3.22.1').toString()
 def thorAbis = ((project.findProperty('thor.abis') ?: 'arm64-v8a').toString().split(',')) as String[]
 

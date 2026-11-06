@@ -239,6 +239,7 @@ void touch_command(int id, bool long_press, uint32_t t_ms) {
                 } else if (view_set_[v]) {
                     cam_.x = view_cam_[v][0];
                     cam_.y = view_cam_[v][1];
+                    input_.pan(0, 0);   // clamp
                 }
             }
             if (id >= TB_GROUP1 && id < TB_GROUP1 + 10) {

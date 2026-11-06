@@ -102,9 +102,27 @@ const ra2assets::CsfStrings* csf(const std::string& dir) {
     }
     return s.get();
 }
-std::string csf_text(const std::string& dir, const std::string& label) {
+// Thor RA2: a label ra2.csf lacks (the YR additions: Yuri's units and
+// buildings) comes from the YR table ra2md.csf in langmd.mix.
+const std::u16string* csf_find(const std::string& dir, const std::string& label) {
     const ra2assets::CsfStrings* c = csf(dir);
-    const std::u16string* t = c ? c->find(label) : nullptr;
+    if (const std::u16string* t = c ? c->find(label) : nullptr) return t;
+    static std::unique_ptr<ra2assets::CsfStrings> md;
+    static bool tried = false;
+    if (!tried) {
+        tried = true;
+        try {
+            MixFile lang = MixFile::open_path(dir + "langmd.mix");
+            if (const MixEntry* e = lang.find(std::string("ra2md.csf"))) {
+                const auto raw = lang.read(*e);
+                md = std::make_unique<ra2assets::CsfStrings>(ra2assets::CsfStrings::load(raw.data(), raw.size()));
+            }
+        } catch (const std::exception&) {}
+    }
+    return md ? md->find(label) : nullptr;
+}
+std::string csf_text(const std::string& dir, const std::string& label) {
+    const std::u16string* t = csf_find(dir, label);
     if (!t) return label;
     std::string out;
 #if defined(__ANDROID__)
@@ -120,8 +138,7 @@ std::string csf_text(const std::string& dir, const std::string& label) {
 }
 // Thor RA2: the same text as UTF-8 (the command deck draws real umlauts).
 std::string csf_text_utf8(const std::string& dir, const std::string& label) {
-    const ra2assets::CsfStrings* c = csf(dir);
-    const std::u16string* t = c ? c->find(label) : nullptr;
+    const std::u16string* t = csf_find(dir, label);
     if (!t) return label;
     std::string out;
     for (char16_t ch : *t) {

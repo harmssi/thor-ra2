@@ -93,13 +93,14 @@ Engine changes are small and marked `Thor RA2`; with `thor::dual()` false the en
 
 ## Changelog
 
+- **0.3.0-beta1** (branch `yuri-faction`, not released): playable Yuri faction in skirmish (human and computer players), Yuri cameos, power and superweapons (Psychic Dominator, Genetic Mutator) on the deck. Engine and gameplay work from the [RA2AndroidPort fork](https://github.com/shietgrupe-cpu13/RA2AndroidPort) by Bryle13 (shietgrupe-cpu13), see [docs/YURI-THOR-INTEGRATION.md](docs/YURI-THOR-INTEGRATION.md).
 - **0.2.1**: ZOOM button on the deck (100 / 125 / 150 %, live, saved); the importer now also copies `expandmd01.mix` (and other `expandmdNN.mix`).
 - **0.2.0**: control groups 1–5 on the deck (tap / double tap / long-press, unit count); D-pad navigation in the shell menus; radar panel slightly smaller.
 - **0.1.0**: first release.
 
 ## Known limitations
 
-- The game is the RA2 Engine beta (0.9): Yuri's side and campaign are not playable yet, see [README.upstream.md](README.upstream.md#known-limitations).
+- The game is the RA2 Engine beta (0.9), see [README.upstream.md](README.upstream.md#known-limitations). Yuri is playable in skirmish only (no Yuri campaign); several Yuri abilities are still approximations or missing, see [docs/YURI-THOR-INTEGRATION.md](docs/YURI-THOR-INTEGRATION.md).
 - Menu D-pad navigation jumps between the buttons, list entries and checkboxes; sliders (and some drop-down lists) still need the stick cursor. The in-game options menu uses the stick cursor.
 - The launcher is upstream's file check / import screen (English, German, Spanish, French).
 - The shell menu font has no ß; menus spell it "ss". Umlauts and accents are shown.
@@ -108,6 +109,7 @@ Engine changes are small and marked `Thor RA2`; with `thor::dual()` false the en
 ## Credits & license
 
 - **RA2 Engine** by Omar El Arab, [github.com/omarelarab/ra2-engine](https://github.com/omarelarab/ra2-engine), Zero-Clause BSD (0BSD), see [LICENSE](LICENSE) and [README.upstream.md](README.upstream.md)
+- **Yuri faction and other engine work** from [RA2AndroidPort](https://github.com/shietgrupe-cpu13/RA2AndroidPort) (branch `android-touch`) by **Bryle13 (shietgrupe-cpu13)**, 0BSD, see [CREDITS.md](CREDITS.md). Its phone touch skins are in the tree but the Thor uses its own deck.
 - Third-party components keep their own licences, see [NOTICE](NOTICE) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) (SDL2: zlib)
 - Fonts: [Inter](https://rsms.me/inter/) and [JetBrains Mono](https://www.jetbrains.com/lp/mono/), SIL Open Font License 1.1 (`android/app/src/main/assets/licenses/`)
 - The deck, its icons, the emblem and the app icon are original work. No EA / Westwood logos, fonts or artwork are included. Cameos and the radar are rendered at runtime from the player's own game files.

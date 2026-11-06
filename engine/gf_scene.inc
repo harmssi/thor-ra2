@@ -335,6 +335,7 @@ public:
         const ra2engine::ScreenPt p = ra2engine::cell_to_screen(x, y, lvl, 60, 30, 15);
         cam_.x = playfield_w_ / 2 - (p.x + 30);
         cam_.y = kWinH / 2 - (p.y + 15);
+        input_.pan(0, 0);   // a start near the map edge stops at the LocalSize clamp
     }
     // The original opens a skirmish looking at the player's start (the base
     // centre set by FUN_0050DE20 in FUN_006880F0).
