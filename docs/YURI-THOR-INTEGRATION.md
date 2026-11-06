@@ -1,6 +1,6 @@
 # Yuri-Fraktion im Thor-Port (Branch `yuri-faction`)
 
-Stand 06.11.2026. Nicht gepusht, nicht veröffentlicht. Version im Branch: 0.3.0-beta1 (versionCode 4).
+Stand 06.11.2026. Nicht gepusht, nicht veröffentlicht. Version im Branch: 0.3.0-beta2 (versionCode 5).
 
 ## Herkunft und Lizenz
 
@@ -92,7 +92,7 @@ stecken in denselben Commits, deshalb hätten Cherry-Picks mehr Konflikte erzeug
 
 **Android-APK:**
 - Gebaut auf harmssi-os (Docker `thor-build`, Release-Keystore).
-- Datei: `dist/ThorRA2-0.3.0-beta1.apk` (mit Launcher, SHA-256 a06ea9ba…), auf dem Thor installiert.
+- Datei: `dist/ThorRA2-0.3.0-beta2.apk` (SHA-256 eeab4a9a…), auf dem Thor installiert.
 - `dist/ThorRA2.apk` ist wieder v0.2.1.
 
 ## Auf dem Thor geprüft (06.11., Skirmish Alamo, Yuri gegen Yuri-KI)
@@ -140,9 +140,10 @@ getestet; es läuft über dieselbe `Input::pan`-Klemmung wie das Ziehen.
 
 ## Offen oder kaputt
 
-- **Fork-Spieldateien-Bildschirm:** Er bleibt im Fork-Stil und ist nur auf Englisch. Er wird nur noch für Import und
-  Prüfung benutzt.
-- **Gefechts-Lobby:** Beim zweiten Öffnen blieb die Kartenvorschau schwarz. Beobachtet, nicht untersucht.
+- **0.3.0-beta2 (06.11.):** Der Spieldateien-Bildschirm ist im Launcher-Design und in DE/EN/ES/FR. Die Kartenvorschau
+  in der Lobby bleibt beim zweiten Öffnen nicht mehr schwarz. Die Info-Kachel heißt „Links“.
+- **Gerätetest 0.3.0-beta2:** 7 Minuten Yuri gegen die Sowjet-KI ohne Absturz. 60 fps, CPU des Spiels etwa 38 % eines
+  Kerns, CPU-Temperatur bis 68 °C. Aufnahmen und Messwerte liegen in `~/Desktop/thor-ra2-yuri-aufnahme/`.
 - **Spielstände:** Das Format ist von 47 (v0.2.1) auf 56 gestiegen. Alte Spielstände laden nicht mehr. Sie werden nicht
   gelöscht, nur nicht mehr angeboten.
 - **Yuri-Mechaniken (laut Fork-Doku FIDELITY-AUDIT43 und YURI_CORE_TEST8):**
