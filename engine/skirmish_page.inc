@@ -624,8 +624,15 @@ private:
         const auto* m = map_at(map_i);
         if (!m || !catalog_) return nullptr;
         const std::string key = "skp:prev:" + m->file_name;
-        if (void* t = tc.peek(key)) return static_cast<SDL_Texture*>(t);
-        if (preview_size_.count(m->file_name)) return nullptr;   // known: no preview
+        // The texture outlives this scene in the shared cache, but the size and start
+        // markers are per scene: decode once per scene before trusting the cached texture
+        // (the second lobby visit drew a 0x0 preview -- a black well).
+        if (preview_size_.count(m->file_name)) {
+            if (void* t = tc.peek(key)) return static_cast<SDL_Texture*>(t);
+            if (preview_size_[m->file_name].first <= 0) return nullptr;   // known: no preview
+            preview_size_.erase(m->file_name);                              // evicted: decode again
+            preview_starts_.erase(m->file_name);
+        }
         int w = 0, h = 0;
         std::vector<uint8_t> rgba;
         try {

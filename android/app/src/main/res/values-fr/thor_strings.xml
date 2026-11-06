@@ -85,4 +85,29 @@
     <string name="l_youtube">Vidéo</string>
     <string name="l_close">Fermer</string>
     <string name="l_rules_note">Le moteur applique les règles de Yuri\'s Revenge dans les deux modes.</string>
+    <!-- Game files screen -->
+    <string name="files_eyebrow">Thor RA2 · fichiers</string>
+    <string name="files_title">Fichiers du jeu</string>
+    <string name="files_sub">Importez, vérifiez ou mettez à jour les fichiers de votre propre Red Alert 2 / Yuri\'s Revenge.</string>
+    <string name="files_checking">Vérification des fichiers …</string>
+    <string name="files_importing">Importation des fichiers …</string>
+    <string name="files_ready">Prêt : tous les fichiers requis sont présents</string>
+    <string name="files_missing">Configuration requise : %d fichiers requis manquants</string>
+    <string name="files_continue">Continuer vers l\'accueil</string>
+    <string name="files_library">Vos fichiers du jeu</string>
+    <string name="files_import">Importer ou mettre à jour les fichiers</string>
+    <string name="files_details_show">Afficher les détails</string>
+    <string name="files_details_hide">Masquer les détails</string>
+    <string name="files_support">Aide</string>
+    <string name="files_menu_style">Menu principal du jeu</string>
+    <string name="files_menu_original">Yuri\'s Revenge d\'origine</string>
+    <string name="files_menu_command">Command Center (expérimental)</string>
+    <string name="files_close">Fermer</string>
+    <string name="files_back">Retour</string>
+    <string name="files_report">Partager le rapport</string>
+    <string name="files_refresh">Vérifier à nouveau</string>
+    <string name="files_terms">Conditions et fichiers</string>
+    <string name="files_credits">Crédits et licences</string>
+    <string name="files_footer">RA2 Engine d\'Omar El Arab · faction Yuri de Bryle13 (RA2AndroidPort) · portage Thor par harmssi. Sans lien avec EA.</string>
+    <string name="files_after_crash">Après un plantage, partagez le rapport avant de relancer.</string>
 </resources>

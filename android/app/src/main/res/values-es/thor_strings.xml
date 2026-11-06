@@ -85,4 +85,29 @@
     <string name="l_youtube">Vídeo</string>
     <string name="l_close">Cerrar</string>
     <string name="l_rules_note">El motor usa las reglas de Yuri\'s Revenge en ambos modos.</string>
+    <!-- Game files screen -->
+    <string name="files_eyebrow">Thor RA2 · archivos</string>
+    <string name="files_title">Archivos del juego</string>
+    <string name="files_sub">Importa, comprueba o actualiza los archivos de tu propia copia de Red Alert 2 / Yuri\'s Revenge.</string>
+    <string name="files_checking">Comprobando archivos …</string>
+    <string name="files_importing">Importando archivos …</string>
+    <string name="files_ready">Listo: están todos los archivos necesarios</string>
+    <string name="files_missing">Falta configurar: faltan %d archivos obligatorios</string>
+    <string name="files_continue">Continuar al inicio</string>
+    <string name="files_library">Tus archivos del juego</string>
+    <string name="files_import">Importar o actualizar archivos</string>
+    <string name="files_details_show">Ver detalles</string>
+    <string name="files_details_hide">Ocultar detalles</string>
+    <string name="files_support">Ayuda</string>
+    <string name="files_menu_style">Menú principal del juego</string>
+    <string name="files_menu_original">Yuri\'s Revenge original</string>
+    <string name="files_menu_command">Command Center (experimental)</string>
+    <string name="files_close">Cerrar</string>
+    <string name="files_back">Atrás</string>
+    <string name="files_report">Compartir informe</string>
+    <string name="files_refresh">Comprobar de nuevo</string>
+    <string name="files_terms">Condiciones y archivos</string>
+    <string name="files_credits">Créditos y licencias</string>
+    <string name="files_footer">RA2 Engine de Omar El Arab · facción Yuri de Bryle13 (RA2AndroidPort) · port Thor de harmssi. Sin relación con EA.</string>
+    <string name="files_after_crash">Tras un cierre inesperado, comparte el informe antes de volver a jugar.</string>
 </resources>

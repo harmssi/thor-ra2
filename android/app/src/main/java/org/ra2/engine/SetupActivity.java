@@ -90,22 +90,12 @@ public class SetupActivity extends Activity {
     private Button importButton, startButton, exitButton, detailsButton;
     private final Handler ui = new Handler(Looper.getMainLooper());
     private volatile boolean copying = false;
-    private static final String[] THEMES={"Command Center","Allied Blue","Soviet Red","Yuri Violet","Emerald","Desert Gold","Arctic","Midnight OLED"};
-    // Background, surface, accent. All text retains a high-contrast light color.
-    private static final int[][] PALETTES={
-        {0xff0a1219,0xff1c2a34,0xff70cdc1},{0xff081526,0xff152c45,0xff83c9ff},
-        {0xff200b10,0xff3b1a22,0xffffaaaa},{0xff180e26,0xff30203f,0xffd5adff},
-        {0xff071b17,0xff14382e,0xff8de4b4},{0xff20190c,0xff37301d,0xfff0d291},
-        {0xff101d29,0xff263c4a,0xffb8e9fa},{0xff000000,0xff111316,0xffc7cedb}};
-    private int[] theme(){int n=getPreferences(MODE_PRIVATE).getInt("launcher_theme",0);return PALETTES[Math.max(0,Math.min(PALETTES.length-1,n))];}
-    private void chooseTheme(){
-        if(copying)return;
-        new android.app.AlertDialog.Builder(this).setTitle("Launcher appearance")
-            .setSingleChoiceItems(THEMES,getPreferences(MODE_PRIVATE).getInt("launcher_theme",0),(dialog,which)->{
-                getPreferences(MODE_PRIVATE).edit().putInt("launcher_theme",which).apply();
-                dialog.dismiss();buildUi();refresh();
-            }).setNegativeButton("Close",null).show();
-    }
+    // Thor RA2: the colours, fonts and radii come from the deck's design tokens (Ui, docs/THOR-DESIGN.md).
+    private static final int BG = de.harmssi.thorra2.Ui.BG, PANEL = de.harmssi.thorra2.Ui.PANEL,
+            PANEL_2 = de.harmssi.thorra2.Ui.PANEL_2, LINE = de.harmssi.thorra2.Ui.LINE,
+            TEXT = de.harmssi.thorra2.Ui.TEXT, TEXT_2 = de.harmssi.thorra2.Ui.TEXT_2,
+            TEXT_3 = de.harmssi.thorra2.Ui.TEXT_3, AMBER = de.harmssi.thorra2.Ui.AMBER,
+            GREEN = de.harmssi.thorra2.Ui.GREEN, CORAL = de.harmssi.thorra2.Ui.CORAL;
     // R-161: the copy thread is owned by the activity; leaving (finish /
     // destroy) cancels it, and its partial file is deleted.
     private Thread importThread;
@@ -160,16 +150,29 @@ public class SetupActivity extends Activity {
         Button b = new Button(this);
         b.setText(label);
         b.setMinHeight(dp(56));   // >= 48 dp touch target
-        b.setTextColor(Color.rgb(225, 234, 240));
+        b.setTextColor(TEXT);
         b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        b.setTypeface(de.harmssi.thorra2.Ui.interMedium());
         b.setAllCaps(false);
-        b.setBackground(panel(theme()[1],theme()[2]));
+        b.setBackgroundTintList(null);
+        b.setBackground(focusable(PANEL, LINE, AMBER));
         b.setOnClickListener(l);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lp.setMargins(0, dp(6), 0, dp(6));
         b.setPadding(dp(18),dp(12),dp(18),dp(12));
         b.setLayoutParams(lp);
         return b;
+    }
+
+    /** Panel with the controller focus ring of the launcher (accent line when focused). */
+    private android.graphics.drawable.StateListDrawable focusable(int fill, int edge, int accent) {
+        android.graphics.drawable.StateListDrawable d = new android.graphics.drawable.StateListDrawable();
+        GradientDrawable f = panel(PANEL_2, accent);
+        f.setStroke(dp(2), accent);
+        d.addState(new int[]{android.R.attr.state_focused}, f);
+        d.addState(new int[]{android.R.attr.state_pressed}, panel(PANEL_2, accent));
+        d.addState(new int[]{}, panel(fill, edge));
+        return d;
     }
 
     private GradientDrawable panel(int fill, int edge) {
@@ -185,95 +188,101 @@ public class SetupActivity extends Activity {
         t.setText(text);
         t.setTextSize(TypedValue.COMPLEX_UNIT_SP, size);
         t.setTextColor(color);
+        t.setTypeface(de.harmssi.thorra2.Ui.inter());
         t.setPadding(dp(8), dp(6), dp(8), dp(6));
         return t;
     }
 
+    private TextView micro(int res) {
+        TextView t = label(getString(res).toUpperCase(Locale.ROOT), 12, TEXT_3);
+        t.setTypeface(de.harmssi.thorra2.Ui.interSemi());
+        t.setLetterSpacing(0.32f);
+        t.setPadding(dp(8), dp(18), dp(8), dp(6));
+        return t;
+    }
+
     private void buildUi() {
+        de.harmssi.thorra2.Ui.init(this);
+        // Two columns on the Thor's wide top screen: the files on the left, support on the right.
+        LinearLayout cols = new LinearLayout(this);
+        cols.setOrientation(LinearLayout.HORIZONTAL);
+        cols.setPadding(dp(28), dp(24), dp(28), dp(24));
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(22), dp(28), dp(22), dp(24));
+        LinearLayout side = new LinearLayout(this);
+        side.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams lw = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.4f);
+        lw.setMargins(0, 0, dp(28), 0);
+        cols.addView(root, lw);
+        cols.addView(side, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         ScrollView page = new ScrollView(this);
         page.setFillViewport(true);
-        page.setBackground(new GradientDrawable(GradientDrawable.Orientation.TL_BR,
-                new int[]{theme()[0],theme()[1],theme()[0]}));
-        FrameLayout centered=new FrameLayout(this);
-        centered.addView(root,new FrameLayout.LayoutParams(
-                Math.min(getResources().getDisplayMetrics().widthPixels,dp(600)),
-                ViewGroup.LayoutParams.WRAP_CONTENT,Gravity.TOP|Gravity.CENTER_HORIZONTAL));
-        page.addView(centered);
+        page.setBackgroundColor(BG);
+        page.addView(cols);
 
-        TextView eyebrow=label("THOR RA2  /  AYN THOR",11,theme()[2]);
-        eyebrow.setLetterSpacing(0.12f);
+        TextView eyebrow = micro(R.string.files_eyebrow);
+        eyebrow.setPadding(dp(8), 0, dp(8), dp(2));
         root.addView(eyebrow);
-        title = label("GAME FILES", 36, Color.rgb(244,240,223));
-        title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        title = label(getString(R.string.files_title), 34, TEXT);
+        title.setTypeface(de.harmssi.thorra2.Ui.interBold());
         root.addView(title);
-        root.addView(label("Import, check or update your own Red Alert 2 / Yuri's Revenge files.",16,Color.rgb(160,182,193)));
-        TextView hero=label("YURI'S REVENGE\n\nAllied. Soviet. Yuri.\nChoose your side. Build your legacy.",18,Color.rgb(237,226,189));
-        hero.setTypeface(Typeface.DEFAULT,Typeface.BOLD);
-        hero.setLineSpacing(dp(3),1f);
-        hero.setPadding(dp(22),dp(24),dp(22),dp(24));
-        GradientDrawable heroArt=new GradientDrawable(GradientDrawable.Orientation.TL_BR,
-                new int[]{theme()[1],theme()[0],theme()[1]});
-        heroArt.setCornerRadius(dp(20));heroArt.setStroke(dp(1),Color.rgb(91,110,104));
-        hero.setBackground(heroArt);
-        LinearLayout.LayoutParams heroSpace=new LinearLayout.LayoutParams(-1,-2);
-        heroSpace.setMargins(0,dp(20),0,dp(16));   // Thor RA2: the Thor launcher is the title screen
+        root.addView(label(getString(R.string.files_sub), 15, TEXT_2));
 
-        readiness = label("Checking game files...", 15, Color.rgb(140, 225, 185));
-        readiness.setBackground(panel(Color.rgb(20, 39, 43), Color.rgb(45, 92, 86)));
+        readiness = label(getString(R.string.files_checking), 15, GREEN);
+        readiness.setTypeface(de.harmssi.thorra2.Ui.interSemi());
+        readiness.setBackground(panel(PANEL, LINE));
         readiness.setPadding(dp(16), dp(12), dp(16), dp(12));
-        root.addView(readiness);
+        LinearLayout.LayoutParams rs = new LinearLayout.LayoutParams(-1, -2);
+        rs.setMargins(0, dp(14), 0, dp(6));
+        root.addView(readiness, rs);
 
-        startButton = button("PLAY YURI'S REVENGE", v -> startGame());
-        startButton.setMinHeight(dp(72));
-        startButton.setTextSize(TypedValue.COMPLEX_UNIT_SP, 19);
-        startButton.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        startButton.setTextColor(Color.rgb(22,31,32));
-        startButton.setBackgroundTintList(null);
-        startButton.setBackground(panel(Color.rgb(224,191,115), Color.rgb(247,220,156)));
+        startButton = button(getString(R.string.files_continue), v -> startGame());
+        startButton.setMinHeight(dp(64));
+        startButton.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17);
+        startButton.setTypeface(de.harmssi.thorra2.Ui.interBold());
+        startButton.setTextColor(AMBER);
+        startButton.setBackground(focusable(PANEL, de.harmssi.thorra2.Ui.alpha(AMBER, 0.55f), AMBER));
         root.addView(startButton);
-        root.addView(label("Uses the game files from your own PC copy.",12,Color.rgb(135,163,181)));
-        root.addView(label("YOUR GAME LIBRARY", 12, Color.rgb(135, 163, 181)));
-        importButton = button("Import or update game files", v -> pickFolder());
+        root.addView(micro(R.string.files_library));
+        importButton = button(getString(R.string.files_import), v -> pickFolder());
         root.addView(importButton);
-        status = label("", 14, Color.rgb(220, 230, 237));
+        status = label("", 13, TEXT_2);
         status.setPadding(dp(16), dp(12), dp(16), dp(12));
-        status.setBackground(panel(Color.rgb(20, 31, 41), Color.rgb(44, 61, 73)));
+        status.setBackground(panel(PANEL, LINE));
         status.setVisibility(View.GONE);
-        detailsButton=button("Game files & setup details  +",v->{
-            boolean open=status.getVisibility()!=View.VISIBLE;
-            status.setVisibility(open?View.VISIBLE:View.GONE);
-            ((Button)v).setText(open?"Hide setup details  −":"Game files & setup details  +");
+        detailsButton = button(getString(R.string.files_details_show), v -> {
+            boolean open = status.getVisibility() != View.VISIBLE;
+            status.setVisibility(open ? View.VISIBLE : View.GONE);
+            ((Button) v).setText(getString(open ? R.string.files_details_hide : R.string.files_details_show));
         });
-        root.addView(detailsButton);root.addView(status);
+        root.addView(detailsButton);
+        root.addView(status);
 
         progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         progress.setMax(1000);
+        progress.setProgressTintList(android.content.res.ColorStateList.valueOf(AMBER));
         progress.setVisibility(View.GONE);
         root.addView(progress);
 
-        root.addView(label("SUPPORT & PREFERENCES",12,Color.rgb(135,163,181)));
-        root.addView(button("Launcher theme",v->chooseTheme()));
-        root.addView(button("Game main menu",v->{
-            if(copying)return;
-            new android.app.AlertDialog.Builder(this).setTitle("Game main menu")
-                .setSingleChoiceItems(new String[]{"Original Yuri's Revenge","Command Center (experimental)"},
-                    getSharedPreferences("interface",MODE_PRIVATE).getBoolean("command_menu",false)?1:0,
-                    (dialog,which)->{getSharedPreferences("interface",MODE_PRIVATE).edit()
-                        .putBoolean("command_menu",which==1).apply();dialog.dismiss();})
-                .setNegativeButton("Close",null).show();
+        side.addView(micro(R.string.files_support));
+        side.addView(button(getString(R.string.files_menu_style), v -> {
+            if (copying) return;
+            new android.app.AlertDialog.Builder(this).setTitle(R.string.files_menu_style)
+                .setSingleChoiceItems(new String[]{getString(R.string.files_menu_original), getString(R.string.files_menu_command)},
+                    getSharedPreferences("interface", MODE_PRIVATE).getBoolean("command_menu", false) ? 1 : 0,
+                    (dialog, which) -> {getSharedPreferences("interface", MODE_PRIVATE).edit()
+                        .putBoolean("command_menu", which == 1).apply(); dialog.dismiss();})
+                .setNegativeButton(R.string.files_close, null).show();
         }));
-        exitButton = button(getString(R.string.setup_exit), v -> finish());
-        root.addView(button("Share game report", v -> Diagnostics.share(this)));
-        root.addView(button("Refresh file status", v -> { if (!copying) refresh(); }));
-        root.addView(button("Terms & game files",v->LegalNotice.show(this,this::refresh)));
-        root.addView(button("Credits & licenses",v->LegalNotice.credits(this)));
-        root.addView(exitButton);
-        root.addView(label("Android fork by Bryle13. Original engine by Omar El Arab. EA has not endorsed and does not support this product.",12,Color.rgb(135,163,181)));
-        root.addView(label("Uses your own PC game files. Display and touch options are available in the game's Options menu.", 12, Color.rgb(135, 163, 181)));
+        exitButton = button(getString(R.string.files_back), v -> finish());
+        side.addView(button(getString(R.string.files_report), v -> Diagnostics.share(this)));
+        side.addView(button(getString(R.string.files_refresh), v -> { if (!copying) refresh(); }));
+        side.addView(button(getString(R.string.files_terms), v -> LegalNotice.show(this, this::refresh)));
+        side.addView(button(getString(R.string.files_credits), v -> LegalNotice.credits(this)));
+        side.addView(exitButton);
+        side.addView(label(getString(R.string.files_footer), 12, TEXT_3));
         setContentView(page);
+        startButton.requestFocus();
     }
 
     private void refresh() {
@@ -282,13 +291,12 @@ public class SetupActivity extends Activity {
         List<String> all = missing(dir, false);
         StringBuilder sb = new StringBuilder();
         sb.append(getString(R.string.setup_intro)).append("\n\n");
-        sb.append("After a crash, tap Share game report before starting another game.\n\n");
+        sb.append(getString(R.string.files_after_crash)).append("\n\n");
         sb.append(getString(R.string.setup_folder)).append("\n  ").append(dir.getAbsolutePath()).append("\n\n");
         // W6-06-05: opened to add / replace files with everything present.
-        title.setText("GAME FILES");
-        readiness.setText(copying ? "IMPORTING GAME FILES..." :
-                (req.isEmpty() ? "READY TO PLAY - Yuri's Revenge" :
-                 "SETUP REQUIRED - " + req.size() + " required files missing"));
+        readiness.setText(copying ? getString(R.string.files_importing) :
+                (req.isEmpty() ? getString(R.string.files_ready) : getString(R.string.files_missing, req.size())));
+        readiness.setTextColor(req.isEmpty() && !copying ? GREEN : CORAL);
         if (req.isEmpty()) {
             sb.append(getString(R.string.setup_ready)).append("\n");
         } else {
@@ -305,7 +313,7 @@ public class SetupActivity extends Activity {
         sb.append("\n\n").append(getString(R.string.setup_reimport_note));   // W6-06-05
         status.setText(sb.toString());
         if (!req.isEmpty() || copying) status.setVisibility(View.VISIBLE);
-        detailsButton.setText(status.getVisibility()==View.VISIBLE?"Hide setup details  −":"Game files & setup details  +");
+        detailsButton.setText(getString(status.getVisibility() == View.VISIBLE ? R.string.files_details_hide : R.string.files_details_show));
         startButton.setEnabled(req.isEmpty() && !copying);
         startButton.setAlpha(req.isEmpty() && !copying ? 1f : 0.45f);
         importButton.setEnabled(!copying);
@@ -458,19 +466,17 @@ public class SetupActivity extends Activity {
                                       : getString(R.string.setup_imported, count);
             status.setText(head + "\n\n" + status.getText());
             status.setVisibility(View.VISIBLE);
-            detailsButton.setText("Hide setup details  −");
+            detailsButton.setText(getString(R.string.files_details_hide));
             if (err == null && missing(dataDir(this), true).isEmpty()) startGame();
         });
     }
 
+    /** Thor RA2: "Continue" returns to the Thor launcher, where the player picks the mode. */
     private void startGame() {
         if (!LegalNotice.accepted(this)) { LegalNotice.show(this,this::startGame); return; }
-        // NEW_TASK only: RA2Activity is singleInstance, so a running game
-        // (backgrounded with Home) is brought back as it was, not restarted.
-        Intent i = new Intent(this, de.harmssi.thorra2.ThorActivity.class);   // Thor RA2
-        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        Intent i = new Intent(this, de.harmssi.thorra2.ThorLauncher.class);
+        i.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         startActivity(i);
-          // Keep the portrait launcher behind the separate native-game task.
-          // Final Quit can uncover it without an intermediate home screen.
+        finish();
     }
 }

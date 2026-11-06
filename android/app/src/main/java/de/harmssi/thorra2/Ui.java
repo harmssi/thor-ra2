@@ -17,31 +17,31 @@ import android.graphics.Typeface;
  * violet (Yuri); amber is the brand accent outside a match. The one source of these
  * tokens for the deck and the launcher; documented in docs/THOR-DESIGN.md.
  */
-final class Ui {
+public final class Ui {
     private Ui() {}
 
     // Surfaces
-    static final int BG = 0xFF08090B;
-    static final int BG_2 = 0xFF0D0F12;
-    static final int PANEL = 0xFF121418;
-    static final int PANEL_2 = 0xFF181B20;
-    static final int LINE = 0xFF252931;
-    static final int LINE_2 = 0xFF323844;
+    public static final int BG = 0xFF08090B;
+    public static final int BG_2 = 0xFF0D0F12;
+    public static final int PANEL = 0xFF121418;
+    public static final int PANEL_2 = 0xFF181B20;
+    public static final int LINE = 0xFF252931;
+    public static final int LINE_2 = 0xFF323844;
 
     // Text
-    static final int TEXT = 0xFFF2F2EF;
-    static final int TEXT_2 = 0xFFA7ABB3;
-    static final int TEXT_3 = 0xFF6A707B;
+    public static final int TEXT = 0xFFF2F2EF;
+    public static final int TEXT_2 = 0xFFA7ABB3;
+    public static final int TEXT_3 = 0xFF6A707B;
 
     // Accents
-    static final int AMBER = 0xFFE8B04A;
-    static final int AMBER_2 = 0xFFF3D27E;
-    static final int RED = 0xFFE5484D;
-    static final int RED_2 = 0xFFF08A6E;
-    static final int BLUE = 0xFF4C9EEB;
-    static final int BLUE_2 = 0xFF9CCBF5;
-    static final int GREEN = 0xFF4CC38A;
-    static final int CORAL = 0xFFD8806A;
+    public static final int AMBER = 0xFFE8B04A;
+    public static final int AMBER_2 = 0xFFF3D27E;
+    public static final int RED = 0xFFE5484D;
+    public static final int RED_2 = 0xFFF08A6E;
+    public static final int BLUE = 0xFF4C9EEB;
+    public static final int BLUE_2 = 0xFF9CCBF5;
+    public static final int GREEN = 0xFF4CC38A;
+    public static final int CORAL = 0xFFD8806A;
 
     static final float LABEL_TRACKING = 0.32f; // em
     static final float RADIUS = 12f;
@@ -55,7 +55,7 @@ final class Ui {
 
     private static Typeface inter, interMedium, interSemi, interBold, mono, monoBold;
 
-    static void init(Context ctx) {
+    public static void init(Context ctx) {
         if (inter != null) {
             return;
         }
@@ -75,22 +75,22 @@ final class Ui {
         }
     }
 
-    static Typeface inter() { return inter; }
-    static Typeface interMedium() { return interMedium; }
-    static Typeface interSemi() { return interSemi; }
-    static Typeface interBold() { return interBold; }
-    static Typeface mono() { return mono; }
-    static Typeface monoBold() { return monoBold; }
+    public static Typeface inter() { return inter; }
+    public static Typeface interMedium() { return interMedium; }
+    public static Typeface interSemi() { return interSemi; }
+    public static Typeface interBold() { return interBold; }
+    public static Typeface mono() { return mono; }
+    public static Typeface monoBold() { return monoBold; }
 
     // Thor RA2: faction 0 Allies, 1 Soviets, 2 Yuri; BRAND outside a match.
-    static final int PURPLE = 0xFFB46CFF, PURPLE_2 = 0xFFD9B8FF;
-    static final int FACTION_BRAND = -1;
+    public static final int PURPLE = 0xFFB46CFF, PURPLE_2 = 0xFFD9B8FF;
+    public static final int FACTION_BRAND = -1;
 
-    static int accent(int faction) {
+    public static int accent(int faction) {
         return faction == 2 ? PURPLE : faction == 1 ? RED : faction == 0 ? BLUE : AMBER;
     }
 
-    static int accent2(int faction) {
+    public static int accent2(int faction) {
         return faction == 2 ? PURPLE_2 : faction == 1 ? RED_2 : faction == 0 ? BLUE_2 : AMBER_2;
     }
 
@@ -139,7 +139,7 @@ final class Ui {
         }
     }
 
-    static int alpha(int color, float a) {
+    public static int alpha(int color, float a) {
         return (color & 0x00FFFFFF) | (Math.round(a * 255) << 24);
     }
 

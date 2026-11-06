@@ -85,4 +85,29 @@
     <string name="l_youtube">Video</string>
     <string name="l_close">Schließen</string>
     <string name="l_rules_note">Die Engine spielt in beiden Modi die Yuri\'s-Revenge-Regeln.</string>
+    <!-- Game files screen -->
+    <string name="files_eyebrow">Thor RA2 · Spieldateien</string>
+    <string name="files_title">Spieldateien</string>
+    <string name="files_sub">Dateien aus deiner eigenen Red Alert 2 / Yuri\'s Revenge importieren, prüfen oder ersetzen.</string>
+    <string name="files_checking">Spieldateien werden geprüft …</string>
+    <string name="files_importing">Spieldateien werden importiert …</string>
+    <string name="files_ready">Bereit: alle nötigen Dateien sind da</string>
+    <string name="files_missing">Einrichtung nötig: %d Pflichtdateien fehlen</string>
+    <string name="files_continue">Weiter zum Start</string>
+    <string name="files_library">Deine Spieldateien</string>
+    <string name="files_import">Spieldateien importieren oder ersetzen</string>
+    <string name="files_details_show">Dateidetails zeigen</string>
+    <string name="files_details_hide">Dateidetails ausblenden</string>
+    <string name="files_support">Hilfe</string>
+    <string name="files_menu_style">Hauptmenü im Spiel</string>
+    <string name="files_menu_original">Original Yuri\'s Revenge</string>
+    <string name="files_menu_command">Command Center (experimentell)</string>
+    <string name="files_close">Schließen</string>
+    <string name="files_back">Zurück</string>
+    <string name="files_report">Spielbericht teilen</string>
+    <string name="files_refresh">Dateien neu prüfen</string>
+    <string name="files_terms">Bedingungen &amp; Spieldateien</string>
+    <string name="files_credits">Mitwirkende &amp; Lizenzen</string>
+    <string name="files_footer">RA2 Engine von Omar El Arab · Yuri-Fraktion von Bryle13 (RA2AndroidPort) · Thor-Port von harmssi. Keine Verbindung zu EA.</string>
+    <string name="files_after_crash">Nach einem Absturz erst „Spielbericht teilen“ antippen, dann neu starten.</string>
 </resources>
