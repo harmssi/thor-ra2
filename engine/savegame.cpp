@@ -345,6 +345,8 @@ bool SaveAccess::valid_world(const World& w, std::string* why) {
     auto unit_ix = [&](int i) { return i >= -1 && i < nu; };
     auto bld_ix = [&](int i) { return i >= -1 && i < nb; };
     auto house_ix = [&](int h) { return h >= 0 && h < kMaxHouses; };
+    for(const auto& b:w.buildings_)if(b.bunker_exit_left < -1 || b.bunker_exit_left>18)
+        return bad("bunker lowering timer");
     for (int i = 0; i < nu; ++i) {
         const Unit& u = w.units_[static_cast<std::size_t>(i)];
         const std::string at = "unit " + std::to_string(i) + " ";
@@ -358,7 +360,7 @@ bool SaveAccess::valid_world(const World& w, std::string* why) {
             !unit_ix(u.ability_fired_unit))
             return bad(at + "unit reference");
         if (!bld_ix(u.target_building) || !bld_ix(u.dock_refinery) || !bld_ix(u.capture_target) ||
-            !bld_ix(u.infiltrate_target) || !bld_ix(u.garrison_of) || !bld_ix(u.occupy_target) ||
+            !bld_ix(u.infiltrate_target) || !bld_ix(u.garrison_of) || !bld_ix(u.occupy_target) || !bld_ix(u.bunker_exit_host) ||
             !bld_ix(u.temporal_target_building) || !bld_ix(u.ability_fired_building))
             return bad(at + "building reference");
         if (u.bomb_house < -1 || u.bomb_house >= kMaxHouses) return bad(at + "bomb house");
@@ -384,6 +386,12 @@ bool SaveAccess::valid_world(const World& w, std::string* why) {
         if (!unit_ix(b.killed_by) || !unit_ix(b.c4_by) || !unit_ix(b.bomb_owner) || !unit_ix(b.def_target))
             return bad(at + "unit reference");
         if (b.bomb_house < -1 || b.bomb_house >= kMaxHouses) return bad(at + "bomb house");
+        if(b.attack_order_kind<0 || b.attack_order_kind>3) return bad(at+"attack order kind");
+        if(b.attack_order_house < -1 || (b.attack_order_house>=0 && !house_ix(b.attack_order_house)))return bad(at+"attack order owner");
+        if((b.attack_order_kind==1 && (b.attack_order_target<0 || !unit_ix(b.attack_order_target))) ||
+           (b.attack_order_kind==2 && (b.attack_order_target<0 || !bld_ix(b.attack_order_target))) ||
+           (b.attack_order_kind==3 && (b.attack_order_x<0 || b.attack_order_y<0 || b.attack_order_x>=gw || b.attack_order_y>=gh)))
+            return bad(at+"attack order target");
         for (int o : b.occupants)   // W8-06-01 audit: the garrison list
             if (!unit_ix(o)) return bad(at + "occupant list");
     }

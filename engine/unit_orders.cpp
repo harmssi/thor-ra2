@@ -5,6 +5,7 @@
 // guard = stop + guard post at the current cell (idle units auto-acquire and
 // are leashed to it -- combat.cpp); scatter = step to a free adjacent cell.
 #include <cmath>
+#include <algorithm>
 
 #include "world.hpp"
 #include "orig_math.hpp"   // Net L0: om::ftol (_ftol 0x7C4D00) for double->int
@@ -19,6 +20,10 @@ void World::order_stop(int idx) {
     if (idx < 0 || idx >= static_cast<int>(units_.size())) return;
     Unit& u = units_[idx];
     if (!orderable(u)) return;
+    if (u.deploys_into>=0 && u.deploys_into<static_cast<int>(btypes().size()) && btypes()[u.deploys_into].slave_count>0) {
+        u.manual_hold=true;
+        u.deploy_mission=0;
+    }
     u.attack_cell_x = u.attack_cell_y = -1;   // G16: Stop ends a ground fire order
     u.occupy_target = -1;
     if (u.is_aircraft) {
@@ -83,6 +88,19 @@ void World::order_stop(int idx) {
 void World::set_unit_owner(int idx, int house) {
     if (idx < 0 || idx >= static_cast<int>(units_.size())) return;
     if (units_[idx].house == house) return;   // FUN_00700940: same owner -> no-op
+    release_unit_mind_control(idx);
+    const int old_house=units_[idx].house;
+    if (old_house>=0 && old_house<static_cast<int>(ai_houses_.size())) {
+        for (auto& team:ai_houses_[old_house].team_state.teams)
+            for (int k=static_cast<int>(team.members.size())-1;k>=0;--k)
+                if (team.members[k]==idx) {
+                    team.members.erase(team.members.begin()+k);
+                    if (k<static_cast<int>(team.member_types.size()))
+                        team.member_types.erase(team.member_types.begin()+k);
+                }
+    }
+    units_[idx].tg.team_aggressive=false;
+    units_[idx].tg.team_suicide=false;
     units_[idx].house = house;
     // W7-09-09 [RE: SetOwningHouse 0x700940 -> Assign_Mission(Guard)]: the
     // new owner's unit leaves Sleep / Harmless (order_stop clears the mission).
@@ -136,7 +154,7 @@ void World::order_scatter(int idx, bool cell_push) {
     // 0x742A9B NearbyLocation -> 0x742EA0 SetDestination). Without it two
     // vehicles meeting head-on in a one-cell lane waited on each other forever
     // (SOV07's harvesters at (74,61)/(75,61)).
-    if (u.moving() && !(cell_push && u.is_vehicle && u.wait_time > 0.0)) return;
+    if (u.moving() && !(cell_push && u.wait_time > 0.0)) return;
     static const int kDx[8] = {0, 1, 1, 1, 0, -1, -1, -1};
     static const int kDy[8] = {-1, -1, 0, 1, 1, 1, 0, -1};
     const int start = combat_rng_.random(0, 7);   // deterministic sync-RNG pick

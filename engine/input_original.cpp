@@ -164,6 +164,12 @@ Input::Action Input::classify(int px, int py, bool shift, bool ctrl, bool alt) c
     }
 
     if (!units_sel) {
+        if(selected_building_valid() && world_.building_can_attack(selected_building_)) {
+            const int house=world_.buildings()[selected_building_].house;
+            if(ctrl && (idx>=0 || b!=selected_building_))return Action::Attack;
+            if(idx>=0 && world_.is_enemy(house,us[idx].house))return Action::Attack;
+            if(b>=0 && b!=selected_building_ && world_.is_enemy(house,world_.buildings()[b].house))return Action::Attack;
+        }
         if (idx >= 0 && world_.controllable(us[idx].house)) return shift ? Action::ToggleSelect : Action::Select;
         if (b >= 0 && world_.buildings()[b].house == world_.order_issuer()) {
             if (selected_building_valid() && b == selected_building_ &&
@@ -174,6 +180,9 @@ Input::Action Input::classify(int px, int py, bool shift, bool ctrl, bool alt) c
         if (selected_building_valid() &&
             is_unit_factory_type(world_.buildings()[selected_building_].type))
             return Action::Rally;
+        if(selected_building_valid() && world_.buildings()[selected_building_].house==world_.order_issuer() &&
+           (world_.can_pack_slave_miner(selected_building_) || world_.can_pack_conyard(selected_building_)))
+            return world_.walkable(cx,cy) ? Action::Move : Action::NoMove;
         // W7-02-10: a selected own firing garrison attacks like a defence.
         if (selected_building_valid() && world_.garrison_firing(selected_building_)) {
             const int sb_house = world_.buildings()[selected_building_].house;
@@ -421,6 +430,17 @@ void Input::left_click_original(int px, int py, bool shift, uint32_t t_ms) {
             return;
         }
         case Action::Attack:
+            if(sel_.ids().empty() && selected_building_valid() && world_.building_can_attack(selected_building_)) {
+                auto c=make_building_event(EventType::MegaMission,selected_building_);
+                c.mission=Mission::Attack;
+                // Clone-local explicit-force marker in Attack's unused Dest.
+                // Unlike Command::value, Dest survives the original event codec.
+                if(mod_ctrl_)c.dest=Target::cell(-1,-1);
+                const int unit=unit_under(px,py),building=pick_building(px,py,ev_touch_);
+                int x=0,y=0;resolve_ground_cell(px,py,x,y);
+                c.target=unit>=0?Target::unit(world_,unit):building>=0?Target::building(building):Target::cell(x,y);
+                emit(std::move(c));actions_.attack_ordered=true;actions_.actor=-1;return;
+            }
             // w7fix-combat: a friendly target (AttackCursorOnFriendlies, the
             // Tesla charge) takes the force-fire emission too.
             if (mod_ctrl_ || [&] {
@@ -453,6 +473,14 @@ void Input::left_click_original(int px, int py, bool shift, uint32_t t_ms) {
             return;
         case Action::Move:
         case Action::NoMove:
+            if(a==Action::Move && sel_.ids().empty() && selected_building_valid() &&
+               (world_.can_pack_slave_miner(selected_building_) || world_.can_pack_conyard(selected_building_))) {
+                int cx=0,cy=0;resolve_ground_cell(px,py,cx,cy);
+                auto c=make_mega(world_,{},Mission::Move,Target{},Target::cell(cx,cy));
+                c.whom.push_back(Target::building(selected_building_));emit(c);
+                actions_.move_ordered=true;actions_.actor=-1;
+                return;
+            }
             if (mod_ctrl_ && shift && a == Action::Move) {   // W7-07-12 attack-move
                 int cx = 0, cy = 0;
                 resolve_ground_cell(px, py, cx, cy);
@@ -614,6 +642,7 @@ void Input::stop_selected() {
     sel_.prune(world_);
     const std::vector<int> sel = sel_.ids();
     if (!sel.empty()) emit(make_whom(world_, EventType::Idle, sel));
+    else if(selected_building_valid())emit(make_building_event(EventType::Idle,selected_building_));
 }
 
 void Input::guard_selected() {

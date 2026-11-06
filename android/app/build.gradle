@@ -135,6 +135,9 @@ android {
     // handler, W2-AR-30); release drops both.
     buildTypes {
         debug {
+            if (project.findProperty('ra2.debugUseConfiguredSigning') == 'true' && keystoreProps != null) {
+                signingConfig signingConfigs.release
+            }
             externalNativeBuild {
                 cmake {
                     // -Pra2.nativeBuildType=Debug gives the old -O0 native code
@@ -216,6 +219,8 @@ gradle.taskGraph.whenReady { graph ->
 tasks.register('ra2CopyNotices', Copy) {
     from(rootProject.file('../LICENSE'))
     from(rootProject.file('../THIRD_PARTY_NOTICES.md'))
+    from(rootProject.file('../CREDITS.md'))
+    from(rootProject.file('../licenses/LIBCXX-LICENSE.txt'))
     into("$buildDir/generated/ra2-notices")
 }
 // Every lint task reads the generated assets folder (the release "vital"

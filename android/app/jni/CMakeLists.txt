@@ -25,6 +25,8 @@ include("${RA2_ROOT}/cmake/sdl2_pin.cmake")
 if(NOT DEFINED SDL2_SRC_DIR)
     if(DEFINED ENV{RA2_SDL2_SRC_DIR})
         set(SDL2_SRC_DIR "$ENV{RA2_SDL2_SRC_DIR}")
+    elseif(EXISTS "${RA2_ROOT}/build-tools/SDL2-2.30.9/CMakeLists.txt")
+        set(SDL2_SRC_DIR "${RA2_ROOT}/build-tools/SDL2-2.30.9")
     elseif(EXISTS "${RA2_ROOT}/build/_deps/sdl2-src/CMakeLists.txt")
         set(SDL2_SRC_DIR "${RA2_ROOT}/build/_deps/sdl2-src")
     else()
@@ -67,7 +69,7 @@ target_sources(main PRIVATE "${RA2_ROOT}/engine/audio_sdl.cpp")
 # a*b+c into FMA at -O2 and the float math (and saves) would drift from the
 # desktop build.
 target_compile_definitions(main PRIVATE RA2_VERSION="${RA2_VERSION}")
-target_compile_options(main PRIVATE -ffp-contract=off)
+target_compile_options(main PRIVATE -ffp-contract=off -gline-tables-only)
 set_target_properties(main PROPERTIES
     CXX_STANDARD 17
     CXX_STANDARD_REQUIRED ON

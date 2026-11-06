@@ -11,6 +11,7 @@
 //                              (repair-sell.md §B6)
 #include <algorithm>
 #include <cmath>
+#include <set>
 
 #include "building.hpp"
 #include "orig_math.hpp"   // Net L0: om::ftol (_ftol 0x7C4D00) for double->int
@@ -77,6 +78,11 @@ bool World::order_deploy_mcv(int idx) {
     Unit& u = units_[idx];
     if (u.frozen || u.is_aircraft) return false;
     deploy_any_ = true;
+    if (!can_deploy_at(idx,u.cell_x,u.cell_y) && clear_slave_deploy_blockers(idx)) {
+        order_stop(idx);
+        units_[idx].deploy_mission=1;
+        return true;
+    }
     if (can_deploy_at(idx, u.cell_x, u.cell_y)) {
         // Legal here: stop and run the deploy mission (turn, then unfold).
         if (u.moving()) {
@@ -115,6 +121,59 @@ bool World::order_deploy_mcv(int idx) {
     return false;
 }
 
+bool World::order_deploy_mcv_auto(int idx) {
+    const auto events=deploy_events_.size();
+    const bool accepted=order_deploy_mcv(idx);
+    // Saved mission values 3/4 are quiet versions of turn/walk (1/2).
+    if(accepted && units_[idx].deploy_mission>0)units_[idx].deploy_mission+=2;
+    deploy_events_.erase(std::remove_if(deploy_events_.begin()+events,deploy_events_.end(),
+        [](const DeployEvent& e){return e.kind==DeployEvent::Kind::CannotDeploy;}),deploy_events_.end());
+    return accepted;
+}
+
+bool World::clear_slave_deploy_blockers(int idx) {
+    if(!is_mcv(idx))return false;
+    const auto& miner=units_[idx];
+    const auto& d=btypes()[miner.deploys_into];
+    if(d.slave_count<=0)return false; // do not change the ordinary MCV relocation policy
+    int x=miner.cell_x,y=miner.cell_y;
+    if(d.fw>2 || d.fh>2){--x;--y;}
+    auto inside=[&](int cx,int cy){return cx>=x && cy>=y && cx<x+d.fw && cy<y+d.fh;};
+    std::vector<int> blockers;
+    Occupancy cleared=occ_;cleared.release_all_of(idx,-1,-1);
+    for(int i=0;i<static_cast<int>(units_.size());++i) {
+        const auto& u=units_[i];
+        if(i==idx || !live_on_map(u) || !inside(u.cell_x,u.cell_y))continue;
+        if(!are_allied(miner.house,u.house) || u.frozen || u.deployed || u.is_aircraft || u.is_naval || u.deploy_mission)
+            return false;
+        blockers.push_back(i);cleared.release_all_of(i,-1,-1);
+    }
+    if(blockers.empty())return false;
+    // Never scatter units for a footprint still blocked by terrain, a building,
+    // an enemy, a reservation or another static obstacle.
+    if(!placement_check(x,y,d.fw,d.fh,miner.house,d.adjacent,passable_,grid_w_,grid_h_,cleared,
+        buildings_,true,nullptr,build_mask(false)).ok)return false;
+    bool waiting=false;std::set<std::pair<int,int>> goals;
+    for(int i:blockers) {
+        auto& u=units_[i];
+        if(u.moving() && u.wait_time<3.0 && !inside(u.path.back().x,u.path.back().y)) {
+            goals.emplace(u.path.back().x,u.path.back().y);waiting=true;continue;
+        }
+        bool routed=false;
+        for(int r=1;r<=4 && !routed;++r)for(int dy=-r;dy<=r && !routed;++dy)for(int dx=-r;dx<=r && !routed;++dx) {
+            if(std::abs(dx)!=r && std::abs(dy)!=r)continue;
+            const int gx=u.cell_x+dx,gy=u.cell_y+dy;
+            if(inside(gx,gy) || goals.count({gx,gy}) || !unit_can_enter_cell(u,gx,gy) ||
+               building_at_cell(gx,gy)>=0 || !occ_.can_enter(gx,gy,i,u.on_deck))continue;
+            order_unit_move(i,gx,gy);
+            if(u.moving() && u.path.back().x==gx && u.path.back().y==gy) {
+                goals.emplace(gx,gy);waiting=true;routed=true;
+            }
+        }
+    }
+    return waiting;
+}
+
 void World::finish_deploy(int idx) {
     Unit& u = units_[idx];
     const int type = u.deploys_into;
@@ -137,6 +196,17 @@ void World::finish_deploy(int idx) {
     Building& nb = buildings_[static_cast<std::size_t>(b)];
     nb.hp = std::max(1, om::ftol(ratio * nb.max_hp));
     nb.ai_repairable = !human_commanded(house);   // fv7c [RE: FUN_007383E0, non-human deploy]
+    if (d.slave_count > 0) {
+        for (int wi = 0; wi < static_cast<int>(units_.size()); ++wi) {
+            Unit& worker = units_[wi];
+            if (worker.w7.slave_manager != -2-idx || !live_on_map(worker) || worker.house != house) continue;
+            order_stop(wi);
+            worker.w7.slave_manager = b;
+            make_harvester(wi, false, std::max(1,d.slave_storage));
+            worker.manual_hold = false;
+            worker.dock_refinery = b;
+        }
+    }
     deploy_events_.push_back({DeployEvent::Kind::Deployed, idx, b, house});
 }
 
@@ -146,20 +216,22 @@ void World::step_deploy(double dt) {
         Unit& u = units_[i];
         if (u.deploy_mission == 0) continue;
         if (!live_on_map(u) || u.deploys_into < 0) { u.deploy_mission = 0; continue; }
-        if (u.deploy_mission == 2) {
+        const bool quiet=u.deploy_mission>=3;
+        if (u.deploy_mission == 2 || u.deploy_mission==4) {
             if (u.moving()) {
                 // A new player order re-pathed the unit elsewhere: drop the deploy.
                 const Cellxy& g = u.path.back();
                 if (g.x != u.deploy_goal_x || g.y != u.deploy_goal_y) u.deploy_mission = 0;
                 continue;
             }
-            u.deploy_mission = 1;   // arrived (or stopped): attempt the unfold here
+            u.deploy_mission = quiet ? 3 : 1;   // arrived: attempt the unfold here
         }
         if (u.moving()) { u.deploy_mission = 0; continue; }   // re-ordered mid-turn
         if (!can_deploy_at(i, u.cell_x, u.cell_y)) {
+            if(clear_slave_deploy_blockers(i))continue;
             // [FUN_007383E0 @0x738500] failure on the spot -> EVA_CannotDeployHere
             // (human player) and back to Guard.
-            deploy_events_.push_back({DeployEvent::Kind::CannotDeploy, i, -1, u.house});
+            if(!quiet)deploy_events_.push_back({DeployEvent::Kind::CannotDeploy, i, -1, u.house});
             u.deploy_mission = 0;
             continue;
         }
@@ -214,6 +286,76 @@ bool World::try_undeploy(int b_idx) {
         static_cast<double>((t.deploy_facing & 0xFF) << 8);
     const int ui = static_cast<int>(units_.size()) - 1;
     deploy_events_.push_back({DeployEvent::Kind::Undeployed, ui, b_idx, house});
+    // Construction yards do not produce units at a rally point. For a
+    // move-to-pack order these existing saved coordinates carry the MCV's
+    // destination through the reverse buildup and a save/load mid-pack.
+    if(b.has_rally) order_unit_move(ui,b.rally_x,b.rally_y);
+    return true;
+}
+
+bool World::can_pack_conyard(int bi) const {
+    if(!skirmish_session_ || !mcv_redeploys_ || bi<0 || bi>=static_cast<int>(buildings_.size()))return false;
+    const auto& b=buildings_[bi];
+    if(!b.alive || b.state!=Building::State::Idle || b.selling || b.c4_applied || ai_enabled(b.house) ||
+       b.type<0 || b.type>=static_cast<int>(btypes().size()) || !btypes()[b.type].conyard)return false;
+    if(std::find(undeploy_types_.begin(),undeploy_types_.end(),b.type)==undeploy_types_.end())return false;
+    const int x=b.cx+(b.fw>2 || b.fh>2),y=b.cy+(b.fw>2 || b.fh>2);
+    return occ_.is_free(x,y);
+}
+bool World::packing_conyard(int bi) const {
+    if(!skirmish_session_ || !mcv_redeploys_ || bi<0 || bi>=int(buildings_.size()))return false;
+    const auto& b=buildings_[bi];
+    return b.selling && !ai_enabled(b.house) && b.type>=0 && b.type<int(btypes().size()) &&
+        btypes()[b.type].conyard && std::find(undeploy_types_.begin(),undeploy_types_.end(),b.type)!=undeploy_types_.end();
+}
+bool World::order_pack_conyard(int bi,int house) {
+    return can_pack_conyard(bi) && buildings_[bi].house==house && begin_sell(bi,house);
+}
+bool World::order_pack_conyard_move(int bi,int house,int x,int y) {
+    if(!can_pack_conyard(bi) || buildings_[bi].house!=house || !walkable(x,y))return false;
+    auto& b=buildings_[bi];
+    const bool previous=b.has_rally;const int px=b.rally_x,py=b.rally_y;
+    b.has_rally=true;b.rally_x=x;b.rally_y=y;
+    if(order_pack_conyard(bi,house))return true;
+    b.has_rally=previous;b.rally_x=px;b.rally_y=py;return false;
+}
+
+bool World::can_pack_slave_miner(int bi) const {
+    if (bi < 0 || bi >= static_cast<int>(buildings_.size())) return false;
+    const Building& b = buildings_[bi];
+    return b.alive && b.state == Building::State::Idle && !b.selling &&
+        b.type >= 0 && b.type < static_cast<int>(btypes().size()) &&
+        btypes()[b.type].slave_count > 0 &&
+        std::find(undeploy_types_.begin(), undeploy_types_.end(), b.type) != undeploy_types_.end();
+}
+
+bool World::order_pack_slave_miner(int bi, int house) {
+    if (!can_pack_slave_miner(bi) || buildings_[bi].house != house) return false;
+    Building& b = buildings_[bi];
+    const auto k = static_cast<std::size_t>(std::find(undeploy_types_.begin(), undeploy_types_.end(), b.type) - undeploy_types_.begin());
+    // Validate before changing the footprint: blocked packing must never sell it.
+    const int x = b.cx, y = b.cy;
+    if (!occ_.is_free(x,y)) return false;
+    const double ratio = b.max_hp > 0 ? static_cast<double>(b.hp) / b.max_hp : 1.0;
+    for (const Cellxy& c : foundation_cells(b.cx,b.cy,b.fw,b.fh))
+        if (c.x >= 0 && c.y >= 0 && c.x < grid_w_ && c.y < grid_h_)
+            passable_[static_cast<std::size_t>(c.y)*grid_w_+c.x] = 1;
+    b.blocking_released = true;
+    const int facing = btypes()[b.type].deploy_facing;
+    kill_building(b); b.sold = true; b.selling = false; b.being_repaired = false;
+    Unit& u = add_combat_unit(x,y,house,undeploy_units_[k]);
+    u.hp = std::max(1,om::ftol(ratio*u.max_hp));
+    u.body_facing = u.turret_facing = static_cast<double>((facing & 255) << 8);
+    const int mobile = static_cast<int>(units_.size())-1;
+    for (int wi = 0; wi < mobile; ++wi) {
+        Unit& worker = units_[wi];
+        if (worker.w7.slave_manager != bi || !live_on_map(worker) || worker.house != house) continue;
+        order_stop(wi);
+        worker.w7.slave_manager = -2-mobile;
+        worker.is_harvester = false; worker.harv = HarvState::None; worker.dock_refinery = -1;
+    }
+    deploy_events_.push_back({DeployEvent::Kind::Undeployed,mobile,bi,house});
+    step_yuri_workers(false); // packing updates followers without recursive relocation
     return true;
 }
 

@@ -75,11 +75,14 @@ struct InfAnimState {
 
 // What the machine needs from the World for one unit and one tick.
 struct InfTickCtx {
+    bool shoveling = false;
+    bool carrying = false;
     bool moving = false;
     bool has_destination = false;
     bool human = false;          // the house is player-controlled (FUN_0050b550)
     bool in_water = false;
     bool has_target = false;
+    bool continuous_secondary = false; // Boris designator, not every secondary gun
     bool dying = false;
     bool deployed = false;
     double fire_flash = 0.0;

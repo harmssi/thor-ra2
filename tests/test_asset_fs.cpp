@@ -12,6 +12,15 @@ using ra2assets::AssetMixSpec;
 using ra2assets::asset_search_order;
 using ra2assets::art_base_names;
 using ra2assets::theater_chain;
+TEST_CASE("Yuri wall override: expansion Citadel replaces the pink classic French placeholder") {
+    if(!ra2fixture::assets_available() || !ra2fixture::ra2_available())return;
+    std::string base=ra2fixture::install_base()+"/";AssetFS fs(base,theater_chain("TEMPERATE"));
+    const ra2assets::MixFile *classic=nullptr,*expansion=nullptr;std::string a,b;
+    const auto* old=fs.find("ggfwll.shp",&classic,&a,true);
+    const auto* correct=fs.find("ggfwll.shp",&expansion,&b,false,true);
+    REQUIRE(old);REQUIRE(correct);CHECK(a=="ra2.mix/generic.mix");CHECK(b=="ra2md.mix/genermd.mix");
+    CHECK(old->size!=correct->size);CHECK(classic->read(*old)!=expansion->read(*correct));
+}
 
 namespace {
 int index_of(const std::vector<AssetMixSpec>& v, const std::string& label) {
@@ -96,4 +105,14 @@ TEST_CASE("AssetFS: real install -- landmarks, snow art, patch art, YR civilians
     bool has_ecache = false;
     for (const auto& m : sno.mixes()) has_ecache |= m.first == "ecache01.mix";
     CHECK(has_ecache);
+}
+
+TEST_CASE("cameo archives are searchable without losing RA2-before-Yuri ordering") {
+    const auto o = asset_search_order(theater_chain("TEMPERATE"), {"expand01.mix"});
+    CHECK(index_of(o,"language.mix/cameo.mix") >= 0);
+    CHECK(index_of(o,"cameo.mix") >= 0);
+    CHECK(index_of(o,"langmd.mix/cameomd.mix") >= 0);
+    CHECK(index_of(o,"cameomd.mix") >= 0);
+    CHECK(index_of(o,"expand01.mix") < index_of(o,"language.mix/cameo.mix"));
+    CHECK(index_of(o,"language.mix/cameo.mix") < index_of(o,"ra2md.mix"));
 }

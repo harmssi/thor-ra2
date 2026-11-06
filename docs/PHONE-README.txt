@@ -1,12 +1,35 @@
 RA2 Engine - phone install
 ==========================
 
+Android fork modifications: Bryle13. Original engine: Omar El Arab (0BSD).
+EA has not endorsed and does not support this product.
+On first launcher use, read Terms & game files and explicitly confirm your
+rights to use your own game files. Decline exits. Terms and full licenses can
+be reopened in the launcher. Confirmation is not proof of purchase or legal
+clearance. Diagnostics remain local until you choose Share game report.
+Current test builds use Google Drive delivery; do not redistribute retail assets.
+
+Build 900042: correct Yuri Citadel wall asset, black-edged enemy-colour dashed
+sensor intent lines, combat idle/secondary animation correction, Floating Disc
+rim laser/air-target height and nuclear ascent trail. Full Disc drain abilities
+and Mental Omega gameplay are NOT implemented. See FIDELITY-AUDIT42.md and
+TOUCH-TEST42.txt for evidence, limitations and the read-only mod audit.
+Save schema remains 55; use identical builds on every network peer.
+
+Build 900041: Tank Bunker platform/composite depth correction, explicit defense
+FIRE/STOP orders, authentic Yuri flag/loading art, deployed-miner role alert,
+and defense-projectile muzzle alignment. See TOUCH-TEST41.txt and
+FIDELITY-AUDIT41.md for verification steps and unresolved cases, including
+charged Prism explicit orders and specialist FX. Save schema 55 requires a
+fresh match; retain old saves and use identical network builds. Advanced
+RA2.INI [Audio] MinerRoleAlerts=no restores the prior deployed-building alert.
+
 1. Copy RA2-Engine.apk to the phone and open it to install
    (allow "Install unknown apps" when asked). To update, install the new
    APK over the old one - your game files and settings are kept. NOTE:
-   saved games do not carry over between engine versions yet; after an
-   update the old saves are listed as "Older version" and cannot be
-   loaded. Finish a mission before you update.
+   saved games require a compatible engine save format. Builds 900027,
+   900028 and 900029 use format 53. Earlier format 52 saves cannot load in
+   these builds. Keep backups and finish older-format matches before updating.
 
 2. Copy the whole RA2 folder (every .mix and .csf file from your Red Alert 2
    install, about 1 GB) into the phone's Download folder, so you have
@@ -24,6 +47,12 @@ RA2 Engine - phone install
    icon -> "Import game files", or in the game Options -> Game Files.
    Saves and settings are kept; there is no need to clear the app data.
 
+Skirmish teams
+--------------
+Each active player row has a Team selector: matching numbers 1-4 are
+allies; - means no team. Choose at least one enemy. Team choices are
+saved with launcher settings. Yuri AI remains unavailable in this preview.
+
 Touch controls
 --------------
 - Tap: select, or give an order to the selected units.
@@ -31,8 +60,22 @@ Touch controls
 - With two or more units selected, tapping one of them moves the group
   there; tap a unit that is not selected to select it.
 - Double tap a unit: select every unit of that type on screen (never deploys).
-- Tap the only selected unit, then wait: deploy / unload it (or DPLY).
+- Tap the only selected unit, then wait: deploy / unload it (or DEPLOY).
 - Drag with one or two fingers: scroll the map.
+- Spread or pinch two fingers on the battlefield to zoom in or out. The
+  battlefield zooms while the sidebar and command panel keep their size.
+  Zoom is bounded (0.75x to 1.75x) and lasts this game
+  session. Lift both fingers before tapping an order. A pinch never becomes
+  a deselect or movement tap. Sidebar and command-panel gestures keep their
+  existing meaning. A screen resize resets zoom to the selected resolution.
+- Launcher theme opens eight saved appearance choices. The game artwork and
+  faction interface remain independent of this launcher preference.
+- Main-menu Quit returns to the portrait launcher. No phone-home step is
+  intended. Please report any remaining home-screen flash on your device.
+- With MCV Redeploy enabled in skirmish, select an eligible Construction Yard
+  and press UNDEPLOY. Blocked exits or a disabled option prevent this action.
+- Automatic deployment retries are quiet. Player-issued deployment failures
+  retain their normal feedback; this does not mute combat or urgent alerts.
 - Hold (a ring fills), then drag: draw a selection box. Or turn on BOX in
   the command column: then a one-finger drag draws the box at once.
 - Hold, then lift: cancel the armed mode (sell / repair / placement /
@@ -41,13 +84,15 @@ Touch controls
   going. While it builds, a small menu opens: PAUSE / RESUME, CANCEL, ALL.
 - Sell / repair: tap a building to mark it, tap it again to do it.
 - Superweapon: tap to see the target area, tap the same spot again to fire.
-- Tap the radar: look there (arm MOVE first to send the units there).
+- Tap the radar: look there. Use an ordinary ground tap for movement.
 - Two-finger tap: cancel a mode, else deselect everything.
 - Three-finger tap: show / hide the frame-rate overlay.
-- CMD (left edge): the command column - +SEL, FIRE, MOVE, STOP, GRD, SCAT,
-  DPLY, BOX, BRF (mission briefing), teams 1-5 (tap = select, hold =
-  create), MORE: TYPE, HOME, EVT, NEXT, PREV, FOLW, teams 6-0,
-  V1-V3 (hold = save the view, tap = jump back).
+- Arrow (bottom left): expand or collapse the command panel. STOP, GUARD,
+  DEPLOY, SCATTER, FIRE, ATK MOVE, +SELECT and teams 1-5 are on the first
+  page. MORE opens TYPE, HOME, EVT, NEXT, PREV, FOLW, teams 6-0,
+  V1-V3 (hold = save the view, tap = jump back), BOX and BRF (briefing).
+  Team taps select; holds assign. ATK MOVE arms the next ground tap to
+  engage enemies along the route. The panel hides while chat is open.
 - Sell / repair / placement modes show a banner with an X to cancel.
 - Back button (or the Options button on the sidebar): in-game options
   menu. On the mission results page Back =
@@ -98,3 +143,29 @@ Three-finger tap in a game shows FPS (frames per second), LOGIC (15/s =
 full speed) and the milliseconds per frame. Please send a screenshot of it
 in a busy moment, with the phone model. With a PC: see docs/INSTALL.md
 section 5 (adb shell setprop debug.ra2.perf 1, then adb logcat).
+
+Build 900036: Game main menu in the Android launcher selects Original Yuri's Revenge (default) or independently drawn Command Center (experimental). Submenus and game controls are retained. This does not connect to CnCNet servers. With MCV Redeploy enabled, select your Construction Yard and tap legal ground to pack and move; the UNDEPLOY command remains available. Reverse buildup completes before movement.
+
+Build 900039: Tank Bunker evacuation lowers the hull before normal pathfinding
+from the center; blocked exits keep the tank inside. Entry no longer shifts
+half a cell after arrival. MCV packing suppresses Structure Sold speech.
+Blocked friendly infantry can yield, and miners plan legal near-ore deploy
+sites. Display-only unit position/facing/height interpolation and slope shadow
+corrections preserve fixed-tick gameplay. See TOUCH-TEST39.txt for phone checks.
+Save format 54: retain backups; old format-53 saves are not converted. Start a
+fresh skirmish. Every network participant must use the same engine build.
+
+Build 900040: fixes remote stale occupancy claims and reselects blocked firing
+positions. Tank Bunker movement/drawing now share the art-aligned docking cell
+instead of the southeast foundation cell. Skirmish has a uniform UI transform,
+bounded flags/badges, compact Team/Start controls and separated slider labels.
+Native validation: 1259 cases / 276943 assertions passed; 12 focused cases /
+261 assertions passed. Save schema stays 54. See TOUCH-TEST40.txt and
+ENGINE-REFERENCES40.md for phone checks, research links and remaining limits.
+Automated validation: 1255 cases / 276810 assertions passed, zero failures;
+one optional absent-retail landmark fixture excluded. No phone/GPU/thermal
+measurement or universal bridge/animation parity is claimed.
+Build 900043: see docs/TOUCH-TEST43.txt for the stationary Gatling audio test.
+The correction covers cell Force Fire loop lifetime and low-power stopping;
+ordinary turret silence still needs phone verification with WEAPON_AUDIO logs.
+Existing bunker, building Force Fire, wall and touch behavior is preserved.

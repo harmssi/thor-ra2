@@ -5,16 +5,27 @@
 // untouched. Included by main.cpp after pres_audio.inc / pres_fx.inc.
 
 class Presentation {
+    bool miner_role_alerts_=true;
 public:
     // side_ix: 0 Allied, 1 Soviet (Russian clips), 2 Yuri.
     void init(const std::string& dir, const ra2assets::MixFile& ra2, AudioSystem& audio, bool audio_on,
               const Rules& rules, const Ini& rules_ini, const Ini& art_ini,
               const std::vector<const std::vector<ra2engine::UnitTypeDef>*>& defs, int side_ix) {
         audio_ = &audio;
-        g_bld_events.clear();   // W2-GA-14 per-building anim state is per game
+        const auto role_alert=read_settings_doc(settings_file_path()).get("Audio","MinerRoleAlerts");
+        miner_role_alerts_=role_alert?ra2engine::ww_parse_bool(*role_alert,true):true;
+        g_bld_events.clear();
+        g_bunker_motion.clear();   // W2-GA-14 per-building anim state is per game
+        speech_cooldown_.clear();
+        g_projectile_motion.clear();
+        g_unit_motion.clear();
         g_pres_crushed.clear();  // W7-04-25
         g_pres_sinkers.clear();  // W7-12-11
         g_pres_tick = 0;        // W3-B: the logic-tick anim clock restarts per game
+        g_walk_stage.clear();
+        g_walk_rates.clear();
+        g_walk_rules = &rules_ini;
+        ++g_pres_epoch;
         // G-83: the effects layer (muzzle / impact / death anims, projectile art).
         fx_.init(dir, ra2, rules_ini, art_ini);
         for (const auto* list : defs)
@@ -39,6 +50,7 @@ public:
             for (const ra2engine::UnitTypeDef& d : *list) effects_.note_unit_id(d.combat.image, d.id);
         g_fx3 = &effects_;
         rules_ini_ = &rules_ini;
+        combat_rules_ = &rules;
         w5_art_ini_ = &art_ini;   // W5-E2 sequence sounds
         snd_.open(dir, &audio, audio_on || g_pres_log_on);
         snd_.set_side(side_ix);
@@ -122,6 +134,8 @@ public:
         }
     }
     ~Presentation() {
+        for (auto& loop : shot_loops_) loop.update(snd_,false,0,0);
+        for (auto& loop : building_shot_loops_) loop.update(snd_,false,0,0);
         if (g_shroud_shp == shroud_.get()) g_shroud_shp = nullptr;
         if (g_fog_shp == fog_.get()) g_fog_shp = nullptr;
         if (g_game_font == font_.get()) { g_game_font = nullptr; g_game_font_pal = nullptr; }
@@ -234,16 +248,18 @@ public:
     // and scaled by GameSpeed exactly as the original's frames are.
     void logic_tick(const ra2engine::World& w, const BuildingAssets& ba, double player_credits,
                     const std::vector<ra2engine::ProjectileEvent>& pev) {
+        g_projectile_motion.capture(w.projectiles(),pev);
+        g_unit_motion.capture_world(w);
         g_pres_tick = ++logic_;
         fx_.tick();
         pres_state_tick(w, fx_);   // W5-PRES R-120 chrono warp anims / sparkles
         projectile_fx(w, pev);   // W3-B: impacts on the tick they detonate
-        if (audio_) unit_fx_tick(w);
         // W3-B: the building slot machine sees this tick's state and events.
         const auto& fe = w.pending_fire_events();
         std::vector<ra2engine::World::FireEvent> fresh;
         for (std::size_t i = std::min(fire_seen_, fe.size()); i < fe.size(); ++i) fresh.push_back(fe[i]);
         fire_seen_ = fe.size();
+        unit_fx_tick(w, fresh);
         defense_fire_tick(w, fresh);   // muzzle / beam / report on the tick of the shot
         fragment_fx(w);                // W7-12-07 shrapnel beams
         pres_bld_anim_tick(w, ba, fx_, g_pres_tick, fresh, units_seen_, bld_seen_,
@@ -561,7 +577,8 @@ private:
                     else if (t == T::ParaDrop || t == T::AmerParaDrop) snd_.eva("EVA_ReinforcementsReady");
                     break;
                 case E::Launched:
-                    fx_.spawn(gen_s("NukeTakeOff"), e.x2, e.y2, level_at(w, e.x2, e.y2), 20.0);
+                    ra2engine::diag::note("NUKE_FX launch=%s available=%d",gen_s("NukeTakeOff").c_str(),
+                        fx_.spawn(gen_s("NukeTakeOff"),e.x2,e.y2,level_at(w,e.x2,e.y2),20.0)!=nullptr);
                     snd_.eva("EVA_NuclearMissileLaunched");
                     pres_log(frame_, "fx superweapon launch");
                     break;
@@ -571,7 +588,9 @@ private:
                     std::string list = pres_clean(rules_ini_->get(pres_upper(wh), "AnimList"));
                     const std::size_t comma = list.find(',');
                     if (comma != std::string::npos) list = pres_clean(list.substr(0, comma));
-                    if (const FxAnimType* ft = fx_.spawn(list, e.x, e.y, level_at(w, e.x, e.y), 0.0))
+                    const FxAnimType* ft=fx_.spawn(list,e.x,e.y,level_at(w,e.x,e.y),0.0);
+                    ra2engine::diag::note("NUKE_FX impact=%s available=%d",list.c_str(),ft!=nullptr);
+                    if (ft)
                         snd_.play_at(ft->report, e.x, e.y, "nuke detonation");
                     pres_log(frame_, "fx superweapon " + list);
                     break;
@@ -591,6 +610,10 @@ private:
                     pres_log(frame_, std::string("fx superweapon activated ") + ra2engine::superweapon_type_name(t));
                     break;
                 case E::Bolt:
+                    // The launch cloud is finite and may finish during the
+                    // deferment. Each real strike also needs its cloud above
+                    // the bolt, rather than leaving the active storm cloudless.
+                    fx_.spawn(gen_s("WeatherConClouds"),e.x,e.y,level_at(w,e.x,e.y),60.0);
                     if (const FxAnimType* ft = fx_.spawn(gen_s("WeatherConBolts"), e.x, e.y, level_at(w, e.x, e.y), 0.0))
                         snd_.play_at(ft->report, e.x, e.y, "bolt");
                     fx_.spawn(gen_s("WeatherConBoltExplosion"), e.x, e.y, level_at(w, e.x, e.y), 0.0);
@@ -712,13 +735,17 @@ private:
         const int wc = std::atoi(pres_clean(rules_ini_->get(id, "WeaponCount")).c_str());
         const bool gunner = u.abil.gunner && !u.abil.ifv_weapons.empty();
         char key[64];
-        const int slot = gunner ? std::max(0, u.ifv_current) : (wc > 0 ? 0 : (u.w_active == 1 ? 1 : 0));
+        const bool gatling = combat_rules_ && combat_rules_->section_flag(id,"IsGattling",false);
+        const int slot = gunner ? std::max(0, u.ifv_current) : (wc > 0 && !gatling ? 0 : (u.w_active == 1 ? 1 : 0) + (gatling ? 2*u.gattling.stage(ra2engine::is_elite(u.vet.veterancy)) : 0));
         std::snprintf(key, sizeof key, "%s|%d|%d|%d", id.c_str(), slot, elite ? 1 : 0, (gunner || wc > 0) ? 1 : 0);
         auto it = fired_cache_.find(key);
         if (it != fired_cache_.end()) return it->second;
         auto get = [&](const std::string& k) { return pres_clean(rules_ini_->get(id, k)); };
         std::string wid, flh_key, flh_def;
-        if (gunner || wc > 0) {
+        if (!gunner && combat_rules_) {
+            wid = ra2engine::type_weapon_id(*combat_rules_,id,slot,elite);
+            if(elite && wid.empty()) wid=ra2engine::type_weapon_id(*combat_rules_,id,slot,false);
+        } else if (gunner || wc > 0) {
             const std::string n = std::to_string(slot + 1);
             if (elite) wid = get("EliteWeapon" + n);
             if (wid.empty()) wid = get("Weapon" + n);
@@ -742,26 +769,17 @@ private:
         const bool elite = w.veterancy_enabled() ? ra2engine::vet_rank(u.vet.veterancy) >= 2 : false;
         const int wc = std::atoi(pres_clean(rules_ini_->get(id, "WeaponCount")).c_str());
         const bool gunner = u.abil.gunner && !u.abil.ifv_weapons.empty();
-        const int slot = gunner ? std::max(0, u.ifv_current) : (wc > 0 ? 0 : (u.w_active == 1 ? 1 : 0));
+        const bool gatling = combat_rules_ && combat_rules_->section_flag(id,"IsGattling",false);
+        const int slot = gunner ? std::max(0, u.ifv_current) : (wc > 0 && !gatling ? 0 : (u.w_active == 1 ? 1 : 0) + (gatling ? 2*u.gattling.stage(ra2engine::is_elite(u.vet.veterancy)) : 0));
         char key[80];
         std::snprintf(key, sizeof key, "%s|%d|%d|%d", img.c_str(), slot, elite ? 1 : 0, (gunner || wc > 0) ? 1 : 0);
         auto it = flh_cache_.find(key);
         if (it != flh_cache_.end()) return it->second;
-        auto art = [&](const std::string& k) { return w5_art_ini_ ? pres_clean(w5_art_ini_->get(img, k)) : std::string(); };
-        std::string v;
-        if (gunner || wc > 0) {
-            const std::string n = std::to_string(slot + 1);
-            if (elite) v = art("EliteWeapon" + n + "FLH");
-            if (v.empty()) v = art("Weapon" + n + "FLH");
-        } else {
-            const char* base = slot == 1 ? "SecondaryFireFLH" : "PrimaryFireFLH";
-            if (elite) v = art(std::string("Elite") + base);
-            if (v.empty()) v = art(base);
+        std::array<double,3> f{0,0,0};
+        if(w5_art_ini_) {
+            const auto v=ra2engine::weapon_art_flh(Art::load(*w5_art_ini_),img,slot,elite,gunner || wc>0);
+            for(int k=0;k<3;++k)f[k]=v[k];
         }
-        std::array<double, 3> f{0, 0, 0};
-        std::stringstream ss(v);
-        std::string t;
-        for (int k = 0; k < 3 && std::getline(ss, t, ','); ++k) f[static_cast<std::size_t>(k)] = std::atof(pres_clean(t).c_str());
         return flh_cache_[key] = f;
     }
     std::map<std::string, std::array<double, 3>> flh_cache_;
@@ -769,13 +787,14 @@ private:
     // voxel-render.md §6 projection [RE: GetFLH 0x6F3030 -- L negated on
     // every other burst shot; 0x6F32C0 -- the turret origin is
     // T(TurretOffset) along the BODY facing, then the turret yaw].
-    void muzzle_point(const ra2engine::World& w, const ra2engine::Unit& u, double& ox, double& lift) {
+    void muzzle_point(const ra2engine::World& w, const ra2engine::Unit& u, double& ox, double& lift,
+                      std::array<double,3>* source = nullptr) {
         std::array<double, 3> flh = fire_flh(w, u);
         const int burst = std::max(1, u.w6.burst);
         const int shot = (u.w6.burst_index + burst - 1) % burst;
         if (shot & 1) flh[1] = -flh[1];
-        const bool turret = u.is_vehicle && !u.is_aircraft;
-        double facing = u.is_vehicle ? (turret ? u.turret_facing : u.body_facing) : 0.0;
+        const bool turret = u.is_vehicle && !u.is_aircraft && u.w7.t.has_turret;
+        double facing = u.is_vehicle ? ra2engine::unit_weapon_facing(u) : 0.0;
         if (!u.is_vehicle) {
             // Infantry block k: screen direction 45k degrees counter-clockwise
             // from screen-up (infantry-anim.md §4) -> a cell delta -> the
@@ -788,7 +807,7 @@ private:
                                                    ra2engine::kVehicleFacings);
         double mx = (flh[0] * std::cos(yaw) - flh[1] * std::sin(yaw)) / 256.0;
         double my = (flh[0] * std::sin(yaw) + flh[1] * std::cos(yaw)) / 256.0;
-        if (u.is_vehicle) {
+        if (turret) {
             const std::string to = w5_art_ini_ ? pres_clean(w5_art_ini_->get(u.image, "TurretOffset")) : std::string();
             if (!to.empty()) {
                 const double byaw = ra2engine::index_to_yaw(
@@ -798,8 +817,11 @@ private:
                 my += f * std::sin(byaw);
             }
         }
-        ox = (mx + my) * 30.0;
-        lift = -((mx - my) * 15.0) + (flh[2] / 256.0) * 36.74;
+        const auto point=ra2engine::terrain_tilt(pres_unit_ramp(u)).apply(mx,my,flh[2]/256.0);
+        if(source) *source={u.fx*256.0+point[0]*256.0,u.fy*256.0-point[1]*256.0,
+            pres_unit_fx_level(w,u)*104.0+point[2]*256.0+(u.is_aircraft ? u.altitude : 0.0)};
+        ox = (point[0] + point[1]) * 30.0;
+        lift = -((point[0] - point[1]) * 15.0) + point[2] * 36.74;
         if (u.is_aircraft && u.altitude > 0.0) lift += ra2engine::altitude_to_screen_dy(u.altitude);
     }
     // Muzzle Anim= at the firing point; an instant (no flying projectile)
@@ -810,7 +832,15 @@ private:
         if (wp->id.empty()) wp = fx_.weapon(u.image);
         if (!wp) return;
         double ox = 0, lift = 0;
-        muzzle_point(w, u, ox, lift);
+        std::array<double,3> source{};
+        muzzle_point(w, u, ox, lift, &source);
+        auto shot_target = [&](double& x,double& y,int& level,double& target_lift) {
+            if (target_point(w,u.target,u.target_building,x,y,level,target_lift)) return true;
+            if (u.attack_cell_x < 0 || u.attack_cell_y < 0) return false;
+            x=u.attack_cell_x;y=u.attack_cell_y;
+            level=w.cell_level(u.attack_cell_x,u.attack_cell_y);target_lift=0;
+            return true;
+        };
         if (!wp->muzzle.empty()) {
             std::string name = wp->muzzle.front();
             if (wp->muzzle.size() >= 8) {
@@ -819,7 +849,7 @@ private:
                     // + 1 >> 1 & 7) + 1) & 7], d = the turret facing for a
                     // Turret=yes type, else the body (UnitClass 0x73fd90)]: the
                     // lists are named by screen compass, map-north = "NE".
-                    const double d = u.is_aircraft ? u.body_facing : u.turret_facing;
+                    const double d = ra2engine::unit_weapon_facing(u);
                     const int k = ((((static_cast<int>(d) & 0xFFFF) >> 12) + 1) >> 1 & 7);
                     name = wp->muzzle[static_cast<std::size_t>((k + 1) & 7)];
                 } else {
@@ -834,11 +864,11 @@ private:
         }
         // W6-04-24: a slot-1 shot draws the Secondary's beam (Boris's Flare);
         // W7-12-30: the fired weapon's own beam flags.
-        if (wp->bolt || wp->laser || wp->rad_beam || wp->line) {   // W2-GA-15 Tesla / Prism beams
+        if (wp->bolt || wp->laser || wp->disk || wp->rad_beam || wp->line) {
             double tx = 0, ty = 0, tl = 0;
             int tlev = 0;
-            if (target_point(w, u.target, u.target_building, tx, ty, tlev, tl)) {
-                fx_.add_beam(u.fx, u.fy, pres_unit_fx_level(w, u), std::max(lift, u.is_vehicle ? 18.0 : 15.0), tx, ty, tlev, tl, *wp,
+            if (shot_target(tx,ty,tlev,tl)) {
+                fx_.add_beam(u.fx, u.fy, pres_unit_fx_level(w, u), lift, tx, ty, tlev, tl, *wp,
                              house_color(w, u.house), ox);
                 // W7-12-31 [RE: EBolt::Fire 0x4c2980 -- ParticleSystem([General]
                 // DefaultSparkSystem=SparkSys) at the bolt end].
@@ -855,9 +885,9 @@ private:
             {
                 double tx = 0, ty = 0, tl = 0;
                 int tlev = 0;
-                if (target_point(w, u.target, u.target_building, tx, ty, tlev, tl))
-                    effects_.instant_line(wp->id.empty() ? effects_.unit_weapon(u.image, 0) : wp->id, u.fx * 256.0,
-                                          u.fy * 256.0, pres_unit_fx_level(w, u) * 104.0 + 60.0, tx * 256.0, ty * 256.0, tlev * 104.0 + 40.0);
+                if (shot_target(tx,ty,tlev,tl))
+                    effects_.instant_line(wp->id.empty() ? effects_.unit_weapon(u.image, 0) : wp->id, source[0],
+                                          source[1], source[2], tx * 256.0, ty * 256.0, tlev * 104.0 + 40.0);
             }
             const auto& us = w.units();
             if (u.target >= 0 && u.target < static_cast<int>(us.size())) {
@@ -867,6 +897,9 @@ private:
                        u.target_building < static_cast<int>(w.buildings().size())) {
                 const ra2engine::Building& b = w.buildings()[u.target_building];
                 impact(u, u.w_damage, b.cx + (b.fw - 1) / 2.0, b.cy + (b.fh - 1) / 2.0, building_level(w, b), 20.0);
+            } else if (u.attack_cell_x >= 0 && u.attack_cell_y >= 0) {
+                impact(u,u.w_damage,u.attack_cell_x,u.attack_cell_y,
+                    w.cell_level(u.attack_cell_x,u.attack_cell_y),0);
             }
         }
     }
@@ -918,6 +951,8 @@ private:
             const ra2engine::Unit& t = us[static_cast<std::size_t>(tu)];
             x = t.fx; y = t.fy; level = pres_unit_fx_level(w, t);   // w8fix-layer: a deck target
             lift = t.is_vehicle ? 10.0 : 8.0;
+            if(t.is_aircraft && t.altitude>0)lift+=ra2engine::altitude_to_screen_dy(t.altitude);
+            else if(ra2engine::unit_parachuting(t))lift+=ra2engine::altitude_to_screen_dy(t.an.para_alt);
             return true;
         }
         if (tb >= 0 && tb < static_cast<int>(w.buildings().size())) {
@@ -1060,7 +1095,7 @@ private:
             const ra2engine::QueueSlot& s = q.state(cat).slot;
             Slot& p = slots_[c];
             const bool structure = c < 2;
-            if (p.type < 0 && s.type >= 0) snd_.eva(structure ? "EVA_Building" : "EVA_Training");
+            if (p.type < 0 && s.type >= 0) note_eva(structure ? "EVA_Building" : "EVA_Training");
             if (!p.ready && s.ready && structure) snd_.eva("EVA_ConstructionComplete");
             if (s.type >= 0 && !s.ready) producing = true;
             p.type = s.type;
@@ -1131,9 +1166,12 @@ private:
                 // [RE: presentation.md §1.2 FUN_004f9200] throttled by
                 // RadarEvent 3 BaseAttacked (8 cells, alive 400 frames); the
                 // same event is the radar flash. Plays BaseUnderAttackSound.
-                if (radar_event(3, cx, cy)) {
-                    snd_.eva("EVA_OurBaseIsUnderAttack");
-                    snd_.play(base_attack_siren_, 0.0, "base under attack");
+                const bool miner=miner_role_alerts_ && b.type>=0 && b.type<int(w.btypes().size()) && w.btypes()[b.type].slave_count>0;
+                if (radar_event(miner?4:3, cx, cy)) {
+                    // Requested harvesting-role alert; this does not change
+                    // the deployed manager's authoritative building type.
+                    snd_.eva(ra2engine::attacked_building_eva(miner));
+                    if(!miner)snd_.play(base_attack_siren_, 0.0, "base under attack");
                 }
                 const double half = 0.5 * b.max_hp;
                 if (p.hp > half && b.hp <= half) snd_.play_at(building_damage_, cx, cy, "half strength");
@@ -1161,7 +1199,7 @@ private:
                     if (!da.empty()) fx_.spawn_hold(da, b.cx - 0.5, b.cy - 0.5, building_level(w, b), b.house, own);
                 }
             }
-            if (b.selling && !p.selling && b.house == g_local_house) {
+            if (b.selling && !p.selling && b.house == g_local_house && !w.packing_conyard(static_cast<int>(i))) {
                 snd_.play_at(sell_sound_, cx, cy, "sell");
                 snd_.eva("EVA_StructureSold");
             }
@@ -1184,8 +1222,7 @@ private:
     }
 
 public:
-    // Base-defense shots (gap fix C's World::take_fire_events; unit shots are
-    // already observed through fire_flash in unit_audio): the weapon's Report=
+    // Base-defense shots (units consume the same event stream separately): the weapon's Report=
     // sound and muzzle Anim= at the building's centre, when visible.
     // W3-B: GameScene drains the queue once per frame; the events were
     // already handled tick by tick (defense_fire_tick from logic_tick).
@@ -1194,22 +1231,90 @@ public:
     }
     void defense_fire_tick(const ra2engine::World& w, const std::vector<ra2engine::World::FireEvent>& evs) {
         const auto& bs = w.buildings();
+        building_shot_loops_.resize(bs.size());
         for (const auto& e : evs) {
             if (e.building < 0 || e.building >= static_cast<int>(bs.size()) || e.weapon.empty()) continue;
             const ra2engine::Building& b = bs[e.building];
             const double fx = b.cx + (b.fw - 1) / 2.0, fy = b.cy + (b.fh - 1) / 2.0;
-            snd_.play_at(fx_.weapon_report(e.weapon), fx, fy, "defense report");
+            const std::string report=pick_report(fx_.weapon_report_list(e.weapon));
+            building_shot_loops_[e.building].shot(snd_,report,fx,fy);
+            // Only changes of a staged weapon's report/start result are
+            // recorded, not every shot or MIX lookup. A silent phone report
+            // can then distinguish missing events/assets from mixer limits.
+            const bool staged=b.type>=0 && b.type<static_cast<int>(w.btypes().size()) && w.btypes()[b.type].gattling.enabled();
+            if(staged && ra2engine::diag::state().enabled.load()) {
+                building_audio_trace_.resize(bs.size());
+                const auto& loop=building_shot_loops_[e.building];
+                const std::string state=e.weapon+"|"+report+"|"+(loop.handle?"playing":"unavailable");
+                if(building_audio_trace_[e.building]!=state) {
+                    building_audio_trace_[e.building]=state;
+                    const auto* sound=audio_ && audio_->mixer?audio_->mixer->sound(report):nullptr;
+                    ra2engine::diag::note("WEAPON_AUDIO building=%d type=%s weapon=%s slot=%d charge=%d report=%s handle=%u enabled=%d variants=%d loop=%d",
+                        e.building,w.btypes()[b.type].id.c_str(),e.weapon.c_str(),e.slot,b.gattling_charge,
+                        report.c_str(),loop.handle,audio_ && audio_->enabled,sound?int(sound->variants.size()):0,snd_.sound_loops(report));
+                }
+            }
             if (b.house != g_local_house && !w.object_visible_at(g_local_house, b.cx, b.cy)) continue;
             // W2-GA-15: Tesla Coil bolts / Prism Tower beams from the tower top.
             const FxWeapon& bw = fx_.weapon_def(e.weapon);
             if (bw.bolt || bw.laser) {
                 double tx = 0, ty = 0, tl = 0;
                 int tlev = 0;
-                if (target_point(w, e.target_unit, e.target_building, tx, ty, tlev, tl))
+                bool target=target_point(w,e.target_unit,e.target_building,tx,ty,tlev,tl);
+                if(!target && e.cell_x>=0 && e.cell_y>=0) {
+                    tx=e.cell_x;ty=e.cell_y;tlev=w.cell_level(e.cell_x,e.cell_y);tl=0;target=true;
+                }
+                if (target)
                     fx_.add_beam(fx, fy, building_level(w, b), 60.0, tx, ty, tlev, tl, bw, house_color(w, b.house));
             }
             const std::vector<std::string> m = fx_.weapon_muzzle(e.weapon);
-            if (!m.empty()) fx_.spawn(m.front(), fx, fy, building_level(w, b), 20.0);   // [RE-FALLBACK: building FireFLH not applied]
+            if (!m.empty()) {
+                const int k=((((static_cast<int>(b.def_turret_facing)&0xFFFF)>>12)+1)>>1)&7;
+                const std::size_t ix=m.size()>=8 ? static_cast<std::size_t>((k+1)&7) : 0;
+                // Building art FLH uses the same turret-space transform as units.
+                ra2engine::Unit muzzle;
+                muzzle.fx=fx; muzzle.fy=fy; muzzle.is_vehicle=true;
+                muzzle.image = combat_rules_ && b.type >= 0 && b.type < static_cast<int>(w.btypes().size()) ?
+                    w.btypes()[b.type].image : std::string();
+                if (muzzle.image.empty() && b.type >= 0 && b.type < static_cast<int>(w.btypes().size()))
+                    muzzle.image=w.btypes()[b.type].id;
+                muzzle.tg.t.rules_id = b.type >= 0 && b.type < static_cast<int>(w.btypes().size()) ? w.btypes()[b.type].id : muzzle.image;
+                muzzle.w7.t.has_turret = b.type >= 0 && b.type < static_cast<int>(w.btypes().size()) && w.btypes()[b.type].turret;
+                muzzle.body_facing=muzzle.turret_facing=b.def_turret_facing;
+                muzzle.w_active=e.slot;
+                muzzle.w6.burst_index=b.w6.burst_index;
+                if(b.type>=0 && b.type<static_cast<int>(w.btypes().size())) {
+                    muzzle.gattling=w.btypes()[b.type].gattling;
+                    muzzle.gattling.charge=b.gattling_charge;
+                }
+                if(b.type>=0 && b.type<static_cast<int>(w.btypes().size()) &&
+                    w.btypes()[b.type].tank_bunker && !b.occupants.empty() &&
+                    b.occupants.front()>=0 && b.occupants.front()<static_cast<int>(w.units().size())) {
+                    muzzle=w.units()[b.occupants.front()];
+                    muzzle.fx=fx;muzzle.fy=fy;
+                    if(e.target_unit>=0 && e.target_unit<static_cast<int>(w.units().size()))
+                        muzzle.w_active=std::max(0,ra2engine::unit_weapon_for_unit(muzzle,w.units()[e.target_unit]));
+                }
+                double ox=0,lift=0;
+                muzzle_point(w,muzzle,ox,lift);
+                fx_.spawn(m[ix], fx, fy, building_level(w, b), lift, ox);
+            }
+        }
+        for (std::size_t i=0;i<bs.size();++i) {
+            const auto& b=bs[i];
+            const bool staged=b.type>=0 && b.type<static_cast<int>(w.btypes().size()) && w.btypes()[b.type].gattling.enabled();
+            const auto old_handle=building_shot_loops_[i].handle;
+            const bool firing=ra2engine::building_weapon_loop_active(
+                b.alive && b.state==ra2engine::Building::State::Idle && !b.selling && !b.power_off,
+                b.def_offline,b.def_target>=0 || b.w6.def_target_building>=0,b.attack_order_kind,
+                b.def_fire_flash,staged,b.gattling_charge);
+            building_shot_loops_[i].update(snd_,firing,
+                b.cx+(b.fw-1)/2.0,b.cy+(b.fh-1)/2.0);
+            if(staged && old_handle && !building_shot_loops_[i].handle) {
+                if(i<building_audio_trace_.size())building_audio_trace_[i].clear();
+                ra2engine::diag::note("WEAPON_AUDIO stop building=%d firing=%d offline=%d order=%d target=%d building_target=%d charge=%d",
+                    int(i),firing,b.def_offline,b.attack_order_kind,b.def_target,b.w6.def_target_building,b.gattling_charge);
+            }
         }
     }
 
@@ -1354,22 +1459,37 @@ private:
     // sound/explosion, observed once per LOGIC tick (Presentation::logic_tick)
     // so an effect is born on the tick its event happened, whatever the
     // render rate (was per render frame inside unit_audio).
-    void unit_fx_tick(const ra2engine::World& w) {
+    void unit_fx_tick(const ra2engine::World& w, const std::vector<ra2engine::World::FireEvent>& events) {
         const auto& units = w.units();
+        // A fast weapon can reset fire_flash to the same value on consecutive
+        // ticks. Observe actual shots rather than losing those equal edges.
+        std::vector<unsigned> shots(units.size(),0);
+        for (const auto& e : events)
+            if(e.unit>=0 && e.unit<static_cast<int>(shots.size())) ++shots[e.unit];
         prev_.resize(units.size(), {0.0, -1.0});
+        shot_loops_.resize(units.size());
         alive_prev_.resize(units.size(), 1);
         for (std::size_t i = 0; i < units.size(); ++i) {
             const auto& u = units[i];
             const UnitVoices& v = voices_of(u);
             infantry_death_fx(w, u, prev_[i].second < 0.0, alive_prev_[i] != 0);   // W3-B
             alive_prev_[i] = u.alive ? 1 : 0;
-            if (u.fire_flash > prev_[i].first && u.cargo_of < 0) {
+            const unsigned count=shots[i] ? shots[i] : (u.fire_flash > prev_[i].first ? 1u : 0u);
+            for(unsigned shot=0;shot<count && u.cargo_of<0;++shot) {
                 // W7-03-06 / W7-12-30: the FIRED weapon's Report (IFV modes,
                 // deployed GI Para / GGI MissileLauncher, elite weapons).
                 const std::string wid = fired_weapon(w, u);
                 const std::string rep = wid.empty() ? v.report : fx_.weapon_fx(wid).report;
-                snd_.play_at(pick_report(rep), u.fx, u.fy, "report");
+                const std::string report=pick_report(rep);
+                shot_loops_[i].shot(snd_,report,u.fx,u.fy);
                 if (u.house == g_local_house || w.object_visible_at(g_local_house, u.cell_x, u.cell_y)) fire_fx(w, u);
+            }
+            auto& shot_loop=shot_loops_[i];
+            if (shot_loop.handle) {
+                const bool firing=ra2engine::weapon_loop_active(u.alive && u.die_time<0 && u.cargo_of<0,
+                    u.target>=0 || u.target_building>=0 || u.attack_cell_x>=0,
+                    u.fire_flash,u.gattling.enabled(),u.gattling.charge);
+                shot_loop.update(snd_,firing,u.fx,u.fy);
             }
             if (u.die_time >= 0.0 && prev_[i].second < 0.0) {
                 // W2-GA-25: crushed infantry (killed by an adjacent Crusher
@@ -1589,7 +1709,7 @@ public:
     std::map<int, int> mc_prev_;   // victim -> controller
     std::map<int, long> mc_since_;  // victim -> capture tick
     void observe_mind_control(const ra2engine::World& w, const std::vector<std::pair<int, int>>& pairs) {
-        if (!audio_ || !rules_ini_) return;
+        if (!rules_ini_) return;
         std::map<int, int> now;
         for (const auto& p : pairs)
             if (p.second >= 0 && p.second < static_cast<int>(w.units().size())) now[p.second] = p.first;
@@ -1634,12 +1754,15 @@ public:
         }
         fx_.links_.clear();
         for (const auto& kv : now) {
-            const bool sel = std::find(sel_order_.begin(), sel_order_.end(), kv.first) != sel_order_.end() ||
+            const bool sel = (kv.second<0 && input_ && input_->selected_building()==-1-kv.second) ||
+                             std::find(sel_order_.begin(), sel_order_.end(), kv.first) != sel_order_.end() ||
                              std::find(sel_order_.begin(), sel_order_.end(), kv.second) != sel_order_.end();
             const long since = mc_since_.count(kv.first) ? g_pres_tick - mc_since_[kv.first] : 1 << 30;
             if (!sel && since > line_frames) continue;
-            if (kv.second < 0 || kv.second >= static_cast<int>(w.units().size())) continue;
-            fx_.links_.push_back({kv.second, kv.first, house_color(w, w.units()[static_cast<std::size_t>(kv.second)].house)});
+            int house=-1;
+            if(kv.second>=0 && kv.second<static_cast<int>(w.units().size())) house=w.units()[kv.second].house;
+            else if(kv.second<0 && -1-kv.second<static_cast<int>(w.buildings().size())) house=w.buildings()[-1-kv.second].house;
+            if(house>=0) fx_.links_.push_back({kv.second, kv.first, house_color(w,house)});
         }
     }
     long mc_count() const { return static_cast<long>(mc_prev_.size()); }
@@ -1698,26 +1821,32 @@ private:
             const ra2engine::BuildingTypeDef& d = ba.roster[static_cast<std::size_t>(b.type)];
             return pres_upper(d.image.empty() ? d.id : d.image);
         };
-        const int n = w.house_count();
-        if (static_cast<int>(sw_anim_prev_.size()) < n) sw_anim_prev_.resize(static_cast<std::size_t>(n), 0);
-        for (int h = 0; h < n; ++h) {
-            const ra2engine::Superweapon* sw = w.sw_state(h);
-            const int st = !sw || sw->type == ra2engine::SuperweaponType::None ? 0 : (sw->ready ? 2 : 1);
-            int& prev = sw_anim_prev_[static_cast<std::size_t>(h)];
-            if (st != prev && st != 0) {
-                for (const ra2engine::Building& b : bs) {
-                    if (!b.alive || b.house != h) continue;
-                    const std::string img = image_of(b);
-                    if (img.empty() || !fx_.building(img).slot[kBsSuper].t) continue;
-                    BldEventState& e = g_bld_events[bld_event_key(b)];
-                    if (st == 2) { e.super_phase = 0; e.super_start = g_pres_tick; }                    // ready: open
-                    else if (prev == 2) { e.super_phase = 2; e.super_start = g_pres_tick; }             // fired: close
-                    else if (e.super_phase < 0) { e.super_phase = 2; e.super_start = -1; }          // charging
-                }
+        for (const auto& b : bs) {
+            if (!b.alive || b.state != ra2engine::Building::State::Idle ||
+                b.type < 0 || b.type >= static_cast<int>(ba.roster.size())) continue;
+            const std::string img = image_of(b);
+            if (img.empty() || !fx_.building(img).slot[kBsSuper].t || !combat_rules_) continue;
+            const std::string power = combat_rules_->section_string(ba.roster[b.type].id,"SuperWeapon", "");
+            const std::string kind = pres_upper(combat_rules_->section_string(power,"Type", ""));
+            ra2engine::SuperweaponType type = ra2engine::SuperweaponType::None;
+            for (int i=1;i<=12;++i) {
+                const auto candidate = ra2engine::superweapon_type_from_id(i);
+                if (pres_upper(ra2engine::superweapon_type_name(candidate)) == kind) { type=candidate; break; }
             }
-            prev = st;
+            const auto* sw = type == ra2engine::SuperweaponType::None ? nullptr : w.sw_state(b.house,type);
+            const int st = !sw ? 0 : (sw->ready ? 2 : 1);
+            auto& e = g_bld_events[bld_event_key(b)];
+            if (st != e.super_previous) {
+                if (st == 2) { e.super_phase=0; e.super_start=g_pres_tick; }
+                else if (e.super_previous == 2) { e.super_phase=2; e.super_start=g_pres_tick; }
+                else { e.super_phase=2; e.super_start=-1; }
+                ra2engine::diag::note("SW_BUILDING type=%s house=%d state=%d->%d phase=%d tick=%ld",
+                    ba.roster[b.type].id.c_str(),b.house,e.super_previous,st,e.super_phase,g_pres_tick);
+                e.super_previous=st;
+            } else if (e.super_phase < 0) { e.super_phase=2; e.super_start=-1; }
         }
     }
+
     // W3-FX AmbientSound: one looping positional voice per live object whose
     // type has AmbientSound= (units, buildings, map terrain objects such as
     // the ore mines' OreMineExtract), restarted when it ends, stopped when the
@@ -1825,14 +1954,19 @@ private:
     ra2assets::Palette font_pal_;
     AudioSystem* audio_ = nullptr;
     const Ini* rules_ini_ = nullptr;
+    const Rules* combat_rules_ = nullptr;
     long frame_ = 0;
     long logic_ = 0;   // W3-B: logic ticks since init (g_pres_tick)
     double clock_ = 0.0;
+    ra2engine::SpeechCooldown speech_cooldown_;
     ra2engine::Camera cam_;
     int vw_ = 1280, vh_ = 720;
     Slot slots_[ra2engine::kQueueCats];
     std::vector<Bld> bhp_;
     std::vector<std::pair<double, double>> prev_;
+    std::vector<ra2engine::WeaponSoundLoop> shot_loops_;
+    std::vector<ra2engine::WeaponSoundLoop> building_shot_loops_;
+    std::vector<std::string> building_audio_trace_;
     bool low_power_ = false;
     bool sw_ready_ = false;
     bool radar_online_ = false;

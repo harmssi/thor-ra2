@@ -279,13 +279,14 @@ private:
                 if (def != (tab == 1)) continue;
                 const bool queued = lq().producing(bc) == i;
                 if (!queued &&
-                    !ra2engine::prerequisites_met(d.prerequisite, bs, ba_.roster, local_house_, ba_.groups))
+                    !ra2engine::prerequisites_met(d.prerequisite, bs, ba_.roster, local_house_, ba_.groups, &world_.units()))
                     continue;
                 v.push_back(i);
             }
             std::stable_sort(v.begin(), v.end(), [&](int a, int b) {
                 return ba_.roster[a].tech_level < ba_.roster[b].tech_level;
             });
+            if(tab==1) for(auto type:world_.sw_types(local_house_)) v.push_back(ra2engine::power_cameo_id(type));
             return v;
         }
         for (int i = 0; i < static_cast<int>(ur_.defs.size()); ++i) {
@@ -295,7 +296,7 @@ private:
             const bool queued = lq().producing(c) == i;
             if (!queued && d.tech_level <= 0) continue;   // wave-5 R-042: tech not (yet) stolen
             if (!queued &&
-                !ra2engine::prerequisites_met(d.prerequisite, bs, ba_.roster, local_house_, ba_.groups))
+                !ra2engine::prerequisites_met(d.prerequisite, bs, ba_.roster, local_house_, ba_.groups, &world_.units()))
                 continue;
             // BuildLimit= (Tanya, Boris: 1): no new one while the limit is on
             // the field [RE-FALLBACK: counted by the unit's art image].

@@ -26,6 +26,7 @@
 //    rubble frame 3, DestroyAnim ruins.
 
 long g_pres_tick = 0;          // W3-B: LOGIC-tick anim clock (Presentation::logic_tick)
+std::uint64_t g_pres_epoch = 0; // Invalidates rules-dependent visual caches per match.
 // W2-GA-14: the building draw_building is drawing (its overlay pass reads the
 // per-building event state below), its rules id, and that state, keyed by the
 // building's identity (origin cell + type, stable for its life).
@@ -43,6 +44,7 @@ struct BldEventState {
     long door_start = -1;          // tick a unit left the factory
     bool door_roof = false;        // ... an aircraft (roof pair)
     long super_start = -1;         // tick of the last SW state change
+    int super_previous = 0;       // readiness of this building's own power
     int super_phase = -1;          // -1 none, 0 opening (ready), 2 closing (fired)
     BldSlotRun run[PresFx::kBldSlots];
     bool init = false;
@@ -50,19 +52,32 @@ struct BldEventState {
     int level = -1;                // refinery storage level shown
     int depot = 0;                 // 0 idle, 1 Special, 2 SpecialTwo, 3 SpecialThree
     bool unloading = false;        // a harvester was dumping here last tick
+    int bunker_unit = -1;
+    bool bunker_known = false, bunker_occupied = false;
+    int bunker_transition = 0;     // 0 none, 1 entering, -1 exiting
     int gate_stage = 0;            // 0 closed .. GateStages open
     long gate_near = -100000;      // last tick a friendly unit stood at the gate
 };
 std::map<long long, BldEventState> g_bld_events;
+struct SlaveMinerPackFx {
+    int type = -1, cx = 0, cy = 0, house = 0, level = 0;
+    double sort_key = 0.0;
+    long start = 0, duration = 0;
+};
+std::map<int, SlaveMinerPackFx> g_slave_miner_pack_fx;
+struct BunkerMotion { double from_x=0,from_y=0,to_x=0,to_y=0; long start=0; bool entering=true; int building=-1; long duration=15,drive=15,delay=0,align=0; double hull_from=0,hull_to=0; };
+std::map<int,BunkerMotion> g_bunker_motion;
+double g_pres_render_fraction = 0; // sub-tick movement only; never simulation input
+
 inline long long bld_event_key(const ra2engine::Building& b) {
     return (static_cast<long long>(b.cx) << 32) ^ (static_cast<long long>(b.cy) << 16) ^ b.type;
 }
 // Frame of a one-shot anim started at `start`; -1 once it has run out.
 inline int oneshot_frame(const FxAnimType& t, long start, long now) {
-    if (start < 0) return -1;
+    if (start < 0 || now < start) return -1;
     const long step = t.delay <= 0 ? 0 : (now - start) / t.delay;
     const long f = t.start + step;
-    return f >= t.end ? -1 : static_cast<int>(f);
+    return f >= t.end ? -1 : static_cast<int>(t.reverse ? t.end - 1 - step : f);
 }
 // Frame of a slot run started at `start` (the anim's own LoopCount: -1 loops
 // for ever, else the finite passes then End); -1 before start / once ended.
@@ -171,7 +186,10 @@ void pres_bld_anim_tick(const ra2engine::World& w, const BuildingAssets& ba, Pre
         for (int s = 0; s < PresFx::kBldSlots; ++s) {
             BldSlotRun& run = st.run[s];
             if (!run.on || !a.slot[s].t) continue;
-            const long len = a.slot[s].t->length_ticks(a.slot[s].t->delay);
+            const FxAnimType& t = *a.slot[s].t;
+            const long len = r.tank_bunker && (s == kBsSpecial3 || s == kBsSpecial4)
+                                 ? std::max<long>(1, static_cast<long>(t.reverse ? t.loop_end : t.end-t.start) * t.delay)
+                                 : t.length_ticks(t.delay);
             if (len < 0 || now < run.start + len) continue;
             const long end = run.start + len;
             run.on = false;
@@ -185,6 +203,107 @@ void pres_bld_anim_tick(const ra2engine::World& w, const BuildingAssets& ba, Pre
                 // [RE-FALLBACK: the Idle restart point after a Production run
                 // was not traced; it resumes when the run ends.]
                 start(st, a, kBsIdle, end);
+            }
+        }
+        if (r.tank_bunker) {
+            const bool occupied = !b.occupants.empty();
+            if(b.bunker_exit_left>=0 && st.bunker_transition!=-1) {
+                for(int s=kBsSpecial;s<=kBsSpecial4;++s)stop(st,s);
+                start(st,a,kBsSpecial3,now);start(st,a,kBsSpecial4,now);
+                st.bunker_transition=-1;
+            }
+            const bool physical_departure=st.bunker_occupied && !occupied &&
+                st.bunker_unit>=0 && st.bunker_unit<int(w.units().size()) &&
+                w.units()[st.bunker_unit].bunker_exit_host==int(bi);
+            if (!st.bunker_known) {
+                st.bunker_known = true;
+                st.bunker_occupied = occupied;
+                if (occupied) {
+                    start(st, a, kBsSpecial, now);
+                    start(st, a, kBsSpecial2, now);
+                }
+            } else if (physical_departure) {
+                // The simulator now drives the real tank out. Do not replace
+                // it with the old straight-line ejection presentation.
+                st.bunker_occupied=false;
+            } else if (occupied != st.bunker_occupied) {
+                const int ui = occupied ? b.occupants.front() : st.bunker_unit;
+                if(ui>=0 && ui<static_cast<int>(w.units().size())) {
+                    const auto& u=w.units()[ui];
+                    const auto dock=ra2engine::bunker_docking_cell(b.cx,b.cy,b.fw,b.fh);
+                    const double cx=dock[0],cy=dock[1];
+                    double from_x=occupied?u.fx:cx,from_y=occupied?u.fy:cy;
+                    const auto previous=g_bunker_motion.find(ui);
+                    if(previous!=g_bunker_motion.end() &&
+                       ra2engine::transition_active(previous->second.start,previous->second.duration,now)) {
+                        const auto& old=previous->second;
+                        const double blend=ra2engine::bunker_drive_fraction(now-old.start,old.drive,old.delay,0);
+                        const double tx=old.entering?old.to_x:u.fx,ty=old.entering?old.to_y:u.fy;
+                        from_x=old.from_x+(tx-old.from_x)*blend;
+                        from_y=old.from_y+(ty-old.from_y)*blend;
+                    }
+                    g_bunker_motion[ui] = occupied ? BunkerMotion{u.fx,u.fy,cx,cy,now,true,static_cast<int>(bi)}
+                                                   : BunkerMotion{cx,cy,u.fx,u.fy,now,false,static_cast<int>(bi)};
+                    g_bunker_motion[ui].from_x=from_x;g_bunker_motion[ui].from_y=from_y;
+                    long duration=1;
+                    for(int slot: {occupied?kBsSpecial:kBsSpecial3,occupied?kBsSpecial2:kBsSpecial4}) {
+                        const auto& art=a.slot[slot];
+                        const bool damaged=b.max_hp>0 && b.hp<=ba.condition_yellow*b.max_hp;
+                        const auto* anim=damaged && art.dmg?art.dmg:art.t;
+                        if(anim)duration=std::max(duration,ra2engine::bunker_motion_ticks(
+                            anim->start,anim->loop_end,anim->delay,anim->reverse));
+                    }
+                    auto& motion=g_bunker_motion[ui];
+                    const long art_ticks=duration>1?duration:15;
+                    motion.drive=occupied?1:ra2engine::bunker_drive_ticks(motion.to_x-from_x,motion.to_y-from_y,
+                        u.speed_cps>0?u.speed_cps:1.0);
+                    motion.delay=occupied?0:art_ticks;
+                    motion.hull_from=u.body_facing;
+                    motion.hull_to=ra2engine::bunker_horizontal_facing(u.body_facing);
+                    motion.align=0; // physical entry mission has already aligned the hull
+                    motion.duration=motion.drive+motion.align+art_ticks;
+                    ra2engine::diag::note("BUNKER_VISUAL building=%zu unit=%d entering=%d duration=%ld from=%.3f,%.3f to=%.3f,%.3f",
+                        bi,ui,occupied,g_bunker_motion[ui].duration,g_bunker_motion[ui].from_x,
+                        g_bunker_motion[ui].from_y,g_bunker_motion[ui].to_x,g_bunker_motion[ui].to_y);
+                }
+                st.bunker_occupied = occupied;
+                st.bunker_transition = occupied ? 1 : -1;
+                for (int s = kBsSpecial; s <= kBsSpecial4; ++s) stop(st, s);
+                // Entry drives across the lowered platform before it rises.
+                // Exit lowers first, then drives clear at the vehicle speed.
+                const auto m=g_bunker_motion.find(ui);
+                const long art_start=now+(occupied && m!=g_bunker_motion.end()?m->second.drive+m->second.align:0);
+                start(st, a, occupied ? kBsSpecial : kBsSpecial3, art_start);
+                start(st, a, occupied ? kBsSpecial2 : kBsSpecial4, art_start);
+            }
+            st.bunker_unit = occupied ? b.occupants.front() : -1;
+            if (st.bunker_transition > 0) {
+                // Opening animations settle in their declared LoopStart/LoopEnd
+                // rather than being restarted after a synthetic finite run.
+                st.bunker_transition=0;
+            }
+            const bool physical_clearing=b.bunker_exit_left>=0 ||
+                (st.bunker_transition<0 && std::any_of(w.units().begin(),w.units().end(),[&](const auto& u){return u.bunker_exit_host==int(bi);}));
+            const bool clearing=physical_clearing || std::any_of(g_bunker_motion.begin(),g_bunker_motion.end(),[&](const auto& item){
+                return item.second.building==static_cast<int>(bi) && !item.second.entering &&
+                    ra2engine::transition_active(item.second.start,item.second.duration,now);
+            });
+            if (st.bunker_transition < 0 && !clearing && !st.run[kBsSpecial3].on && !st.run[kBsSpecial4].on) {
+                st.bunker_transition = 0;
+                if (occupied) {
+                    start(st, a, kBsSpecial, now);
+                    start(st, a, kBsSpecial2, now);
+                }
+            }
+            if (occupied && st.bunker_transition == 0) {
+                if (!st.run[kBsSpecial].on) start(st, a, kBsSpecial, now);
+                if (!st.run[kBsSpecial2].on) start(st, a, kBsSpecial2, now);
+            }
+            if (!occupied && st.bunker_transition == 0) {
+                stop(st, kBsSpecial);
+                stop(st, kBsSpecial2);
+                stop(st, kBsSpecial3);
+                stop(st, kBsSpecial4);
             }
         }
         // Refinery storage level [RE: FUN_004509c0 Refinery=yes].
@@ -261,6 +380,8 @@ int pres_building_main_frame(const ra2engine::Building& b, const std::string& id
     const PresFx::BldRules& r = g_fx->building_rules(id);
     const int images = std::max(1, count / 2);
     const bool damaged = b.max_hp > 0 && b.hp <= yellow * b.max_hp;
+    if(r.occupiable && r.leave_rubble && images==4)
+        return ra2engine::civilian_main_frame(damaged,!b.occupants.empty());
     if (r.occupiable && images >= 4) {
         const int f = (b.occupants.empty() ? 0 : 2) + (damaged ? 1 : 0);
         return std::min(f, images - 1);
@@ -332,17 +453,28 @@ void pres_building_overlay(SDL_Renderer* ren, ra2engine::TextureCache& tc, const
     if (ev && ev->door_start >= 0)
         if (const FxAnimType* d = slot_t(door)) draw_t(d, oneshot_frame(*d, ev->door_start, now), door.x, door.y);
     if (ev && ev->super_phase >= 0) {
-        const int open = ev->super_phase;          // 0 (ready) or 2 (fired)
-        const PresFx::BldAnims::Slot& s1 = a.slot[kBsSuper + open];
-        const PresFx::BldAnims::Slot& s2 = a.slot[kBsSuper + open + 1];
-        const FxAnimType* t1 = slot_t(s1);
-        const int fr = t1 ? oneshot_frame(*t1, ev->super_start, now) : -1;
-        if (t1 && fr >= 0) draw_t(t1, fr, s1.x, s1.y);
-        else if (const FxAnimType* t2 = slot_t(s2)) draw_t(t2, PresFx::loop_frame(*t2, now), s2.x, s2.y);
+        // Original art order: idle, opening, ready loop, closing.
+        const auto& idle = a.slot[kBsSuper];
+        const auto& opening = a.slot[kBsSuper+1];
+        const auto& ready = a.slot[kBsSuper+2];
+        const auto& closing = a.slot[kBsSuper+3];
+        const bool charged = ev->super_phase == 0;
+        const auto& transition = charged ? opening : closing;
+        const auto* t = slot_t(transition);
+        const int frame = t ? oneshot_frame(*t,ev->super_start,now) : -1;
+        if (t && frame >= 0) draw_t(t,frame,transition.x,transition.y);
+        else {
+            const auto& stable = charged ? ready : idle;
+            if (const auto* loop = slot_t(stable))
+                draw_t(loop, PresFx::loop_frame(*loop,ev->super_start < 0 ? 0 : now-ev->super_start),stable.x,stable.y);
+        }
     }
+
     if (ev) {
+        const bool tank_bunker = g_fx->building_rules(g_overlay_id).tank_bunker;
         for (int s = 0; s < PresFx::kBldSlots; ++s) {
             if (s == kBsTurret || (s >= kBsSuper && s <= kBsSuper4) || !ev->run[s].on) continue;
+            if (tank_bunker && s >= kBsSpecial && s <= kBsSpecial4) continue;
             const PresFx::BldAnims::Slot& sl = a.slot[s];
             const FxAnimType* t = slot_t(sl);
             if (!t) continue;
@@ -362,7 +494,9 @@ void pres_building_overlay(SDL_Renderer* ren, ra2engine::TextureCache& tc, const
         // the offset converted pixel->lepton (FUN_006d15e0), flags 0x600.
         // [RE-FALLBACK: the type pick -- the original starts at a random
         // DamageFireTypes index and cycles; the clone cycles from 0.]
-        static std::vector<std::string> fires = g_fx->damage_fires();
+        static std::vector<std::string> fires;
+        static std::uint64_t fire_epoch=~std::uint64_t(0);
+        if(fire_epoch!=g_pres_epoch) { fires=g_fx->damage_fires();fire_epoch=g_pres_epoch; }
         if (fires.empty()) return;
         for (std::size_t i = 0; i < a.fire_offsets.size(); ++i) {
             const FxAnimType* t = g_fx->type(fires[i % fires.size()]);
@@ -372,6 +506,34 @@ void pres_building_overlay(SDL_Renderer* ren, ra2engine::TextureCache& tc, const
                        fcy + a.fire_offsets[i].second + t->ydraw, PresFx::alpha_for(*t, fr), W, H);
         }
     }
+}
+
+void pres_tank_bunker_overlay(SDL_Renderer* ren, ra2engine::TextureCache& tc, const ra2engine::Building& b,
+                              const std::string& image, int fcx, int fcy, double condition_yellow,
+                              const ra2assets::Palette& pal, int ckey, int W, int H, bool front) {
+    if (!g_fx) return;
+    auto ev = g_bld_events.find(bld_event_key(b));
+    if (ev == g_bld_events.end()) return;
+    if (b.occupants.empty() && ev->second.bunker_transition == 0) return;
+    const PresFx::BldAnims& a = g_fx->building(pres_upper(image));
+    const bool damaged = b.max_hp > 0 && b.hp <= condition_yellow * b.max_hp;
+    const bool garrisoned = !b.occupants.empty();
+    const int slot = ra2engine::bunker_animation_slot(front,ev->second.bunker_transition);
+    const PresFx::BldAnims::Slot& sl = a.slot[slot];
+    const FxAnimType* t = damaged && sl.dmg ? sl.dmg : garrisoned && sl.garr ? sl.garr : sl.t;
+    if (!t) return;
+    const BldSlotRun& run = ev->second.run[slot];
+    if (!run.on && ev->second.bunker_transition>=0) return;
+    int frame = ev->second.bunker_transition < 0
+                    ? t->frame_at(std::min<long>(g_pres_tick-run.start,
+                        std::max<long>(0,ra2engine::bunker_motion_ticks(t->start,t->loop_end,t->delay,t->reverse)-1)))
+                    : bld_run_frame(*t, run.start, g_pres_tick);
+    if (frame < 0) return;
+    if (t->shadow)
+        g_fx->blit_shadow(ren, tc, *t->shp, "bsh:" + t->name, frame + t->shp->count() / 2,
+                          fcx + sl.x, fcy + sl.y + t->ydraw, W, H);
+    g_fx->blit(ren, tc, *t->shp, "banim:" + t->name + ":c" + std::to_string(ckey), frame,
+               fcx + sl.x, fcy + sl.y + t->ydraw, PresFx::alpha_for(*t, frame), W, H, &pal);
 }
 
 // W3-B: civilian buildings drawn as map dressing (skirmish) loop their
@@ -410,21 +572,21 @@ bool pres_building_leaves_rubble(const ra2engine::Building& b, const BuildingAss
 // its locomotor moves, every IdleRate frames (+0x298, default 0 = never)
 // standing. Drives SHP-vehicle walk frames and voxel HVA frames.
 std::vector<int> g_walk_stage;
-std::map<std::string, std::pair<int, int>> g_walk_rates;   // image -> {WalkRate, IdleRate}
+std::map<std::string, std::pair<int, int>> g_walk_rates;   // rules id -> {WalkRate, IdleRate}
 const Ini* g_walk_rules = nullptr;
-const std::pair<int, int>& pres_walk_rates(const std::string& image) {
-    auto it = g_walk_rates.find(image);
+const std::pair<int, int>& pres_walk_rates(const std::string& rules_id) {
+    auto it = g_walk_rates.find(rules_id);
     if (it != g_walk_rates.end()) return it->second;
     int walk = 1, idle = 0;
     if (g_walk_rules) {
-        const std::string w = pres_clean(g_walk_rules->get(image, "WalkRate"));
-        const std::string i = pres_clean(g_walk_rules->get(image, "IdleRate"));
+        const std::string w = pres_clean(g_walk_rules->get(rules_id, "WalkRate"));
+        const std::string i = pres_clean(g_walk_rules->get(rules_id, "IdleRate"));
         if (!w.empty()) walk = std::max(1, std::atoi(w.c_str()));
         if (!i.empty()) idle = std::max(0, std::atoi(i.c_str()));
     }
-    return g_walk_rates.emplace(image, std::make_pair(walk, idle)).first->second;
+    return g_walk_rates.emplace(rules_id, std::make_pair(walk, idle)).first->second;
 }
-int pres_idle_rate(const std::string& image) { return pres_walk_rates(image).second; }
+int pres_idle_rate(const std::string& rules_id) { return pres_walk_rates(rules_id).second; }
 int pres_walk_stage(int idx) {
     return idx >= 0 && idx < static_cast<int>(g_walk_stage.size()) ? g_walk_stage[static_cast<std::size_t>(idx)] : 0;
 }
@@ -434,8 +596,9 @@ void pres_walk_tick(const ra2engine::World& w, long now) {
     for (std::size_t i = 0; i < us.size(); ++i) {
         const ra2engine::Unit& u = us[i];
         if (!u.alive || !(u.is_vehicle || u.is_aircraft || u.is_naval) || u.die_time >= 0.0) continue;
-        const std::pair<int, int>& r = pres_walk_rates(u.image);
+        const std::pair<int, int>& r = pres_walk_rates(pres_type_id(u));
         const bool moving = u.moving() || (u.is_aircraft && u.altitude > 0.0);
-        if (moving ? (now % r.first == 0) : (r.second > 0 && now % r.second == 0)) ++g_walk_stage[i];
+        if (!u.frozen && (moving ? (now % r.first == 0) : (r.second > 0 && now % r.second == 0)))
+            ++g_walk_stage[i];
     }
 }

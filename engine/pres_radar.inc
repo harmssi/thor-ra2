@@ -145,7 +145,6 @@ public:
         SDL_RenderSetClipRect(ren, nullptr);
     }
 
-#if defined(__ANDROID__)
     // Thor RA2: the same picture for the command deck on the second screen,
     // fitted into max_w x max_h (independent of the sidebar draw).
     bool thor_picture(const ra2engine::World& w, const BuildingAssets& ba, int max_w, int max_h,
@@ -180,7 +179,6 @@ public:
         out[2] = std::max(2, x1 - out[0]);
         out[3] = std::max(2, y1 - out[1]);
     }
-#endif
 
 private:
     void build_picture(const ra2engine::World& w, const BuildingAssets& ba, double s, int TW, int TH,
@@ -200,11 +198,17 @@ private:
                     p[3] = 255;
                 }
         };
+        // Shroud first: at small scales several cells share a pixel, and a later
+        // unexplored cell must never erase an explored cell's colour.
+        for (int y = 0; y < gh_; ++y)
+            for (int x = 0; x < gw_; ++x)
+                if (base_[static_cast<std::size_t>(y) * gw_ + x].a != 0 && !w.explored_at(g_local_house, x, y))
+                    plot(x, y, shroud, 1.0);
         for (int y = 0; y < gh_; ++y)
             for (int x = 0; x < gw_; ++x) {
                 ra2assets::Rgba c = base_[static_cast<std::size_t>(y) * gw_ + x];
                 if (c.a == 0) continue;
-                if (!w.explored_at(g_local_house, x, y)) { plot(x, y, shroud, 1.0); continue; }
+                if (!w.explored_at(g_local_house, x, y)) continue;
                 if (w.ore().has_ore(x, y))
                     c = w.ore().kind_at(x, y) == ra2engine::OreKind::Gems ? ra2assets::Rgba{60, 110, 200, 255}
                                                                             : ra2assets::Rgba{200, 170, 40, 255};

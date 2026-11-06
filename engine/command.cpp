@@ -2,6 +2,7 @@
 // reproduces exactly what the pre-L1 UI call did to the World, with the
 // "current selection" replaced by the command's explicit Whom list.
 #include "command.hpp"
+#include "diagnostics.hpp"
 
 #include <algorithm>
 #include <cstdio>
@@ -186,10 +187,11 @@ bool bld_live(const World& w, int b) {
 }
 
 // Whom ids restricted to unit references (ascending, as the UI built them).
-std::vector<int> unit_whom(const Command& c) {
+std::vector<int> unit_whom(const World& w,const Command& c) {
     std::vector<int> v;
     for (const Target& t : c.whom)
-        if (t.is_unit()) v.push_back(t.id);
+        if (t.is_unit() && unit_ok(w,t.id) &&
+            (c.house==kAnyHouse || w.units()[t.id].w7.slave_manager==-1)) v.push_back(t.id);
     return v;
 }
 
@@ -201,20 +203,32 @@ const OrderRules& rules_of(CommandHost* host) {
 
 void apply_mega(World& w, const Command& c, CommandHost* host) {
     const int H = c.house;
-    const std::vector<int> ids = unit_whom(c);
+    const std::vector<int> ids = unit_whom(w,c);
     // W4-SQ: a player order takes the units out of their script team.
     w.mark_player_orders(ids);
     switch (c.mission) {
         case Mission::Move:
         case Mission::QMove:
             if (c.dest.is_cell()) w.group_move(H, ids, c.dest.cell_x(), c.dest.cell_y());
+            if(c.dest.is_cell())for(const auto& t:c.whom) {
+                if(!t.is_building() || !bld_ok(w,t.id) || w.buildings()[t.id].house!=H)continue;
+                if(w.can_pack_conyard(t.id)) {
+                    w.order_pack_conyard_move(t.id,H,c.dest.cell_x(),c.dest.cell_y());
+                    continue;
+                }
+                if(!w.can_pack_slave_miner(t.id))continue;
+                const int mobile=static_cast<int>(w.units().size());
+                if(w.order_pack_slave_miner(t.id,H))w.order_unit_move(mobile,c.dest.cell_x(),c.dest.cell_y());
+            }
             return;
         case Mission::Attack:
             // W7-02-10: an own firing garrison in the Whom takes the target.
             for (const Target& t : c.whom)
                 if (t.is_building() && bld_ok(w, t.id))
-                    (void)w.garrison_attack(H, t.id, c.target.is_unit() ? c.target.id : -1,
-                                            c.target.is_building() ? c.target.id : -1);
+                    (void)w.order_building_attack(H,t.id,c.target.is_unit()?c.target.id:-1,
+                        c.target.is_building()?c.target.id:-1,c.target.is_cell()?c.target.cell_x():-1,
+                        c.target.is_cell()?c.target.cell_y():-1,
+                        c.dest.is_cell() && c.dest.cell_x()==-1 && c.dest.cell_y()==-1);
             if (c.target.is_unit()) w.group_attack(H, ids, c.target.id);
             else if (c.target.is_building()) w.group_attack_building(H, ids, c.target.id);
             else if (c.target.is_cell()) w.group_attack_cell(H, ids, c.target.cell_x(), c.target.cell_y());
@@ -284,6 +298,7 @@ void apply_mega(World& w, const Command& c, CommandHost* host) {
             return;
         case Mission::Stop:
             w.group_stop(H, ids);
+            for(const auto& t:c.whom) if(t.is_building())w.stop_building_attack(H,t.id);
             return;
         default:
             return;   // missions the clone's UI never issues
@@ -298,9 +313,13 @@ void apply_deploy(World& w, const Command& c) {
     for (const Target& t : c.whom)
         if (t.is_building() && bld_ok(w, t.id)) {
             const Building& b = w.buildings()[static_cast<std::size_t>(t.id)];
-            if (b.house == H && !b.occupants.empty()) w.unload_occupants(t.id);
+            if (b.house == H) {
+                if (!b.occupants.empty()) w.unload_occupants(t.id);
+                else if(w.can_pack_conyard(t.id)) (void)w.order_pack_conyard(t.id,H);
+                else (void)w.order_pack_slave_miner(t.id, H);
+            }
         }
-    const std::vector<int> ids = unit_whom(c);
+    const std::vector<int> ids = unit_whom(w,c);
     w.group_unload(H, ids);
     for (int i : ids)
         if (unit_ok(w, i) && w.can_command(H, w.units()[static_cast<std::size_t>(i)].house)) (void)w.order_deploy(i);
@@ -342,18 +361,30 @@ bool valid_net_command(const World& w, const Command& c) {
 
 void apply_command(World& w, const Command& c, CommandHost* host) {
     const int H = c.house;
+    if(c.type!=EventType::SelectNotify) {
+        diag::note("COMMAND begin frame=%u seq=%u house=%d event=%s mission=%d actors=%zu target=%d:%d dest=%d:%d type=%d:%d cell=%d,%d value=%d",
+            c.frame,c.seq,H,event_name(c.type),static_cast<int>(c.mission),c.whom.size(),static_cast<int>(c.target.rtti),c.target.id,
+            static_cast<int>(c.dest.rtti),c.dest.id,c.rtti_type,c.heap_id,c.cx,c.cy,c.value);
+        if(diag::state().enabled.load())for(const auto& actor:c.whom) {
+            if(actor.is_unit() && actor.id>=0 && actor.id<static_cast<int>(w.units().size())) {
+                const auto& u=w.units()[actor.id];diag::note(" actor unit=%d rules=%s image=%s cell=%d,%d hp=%d harv=%d dock=%d",actor.id,u.tg.t.rules_id.c_str(),u.image.c_str(),u.cell_x,u.cell_y,u.hp,static_cast<int>(u.harv),u.dock_refinery);
+            } else if(actor.is_building())diag::note(" actor building=%d",actor.id);
+        }
+    }
+    struct Done {const Command& c;~Done(){if(c.type!=EventType::SelectNotify)diag::note("COMMAND end frame=%u seq=%u event=%s",c.frame,c.seq,event_name(c.type));}} done{c};
     switch (c.type) {
         case EventType::MegaMission:
             apply_mega(w, c, host);
             return;
         case EventType::Idle: {
-            const std::vector<int> ids = unit_whom(c);
+            const std::vector<int> ids = unit_whom(w,c);
             w.mark_player_orders(ids);
             w.group_stop(H, ids);
+            for(const auto& t:c.whom)if(t.is_building())w.stop_building_attack(H,t.id);
             return;
         }
         case EventType::Scatter: {
-            const std::vector<int> ids = unit_whom(c);
+            const std::vector<int> ids = unit_whom(w,c);
             w.mark_player_orders(ids);
             w.group_scatter(H, ids);
             return;

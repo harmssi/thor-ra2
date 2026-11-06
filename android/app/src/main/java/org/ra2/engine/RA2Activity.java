@@ -66,6 +66,11 @@ public class RA2Activity extends SDLActivity implements AudioManager.OnAudioFocu
      */
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        try {
+            android.system.Os.setenv("RA2_COMMAND_MENU",
+                getSharedPreferences("interface",MODE_PRIVATE).getBoolean("command_menu",false)?"1":"0",true);
+        } catch(android.system.ErrnoException e) { Log.w(TAG,"Menu preference unavailable",e); }
+        Diagnostics.begin(this);
         super.onCreate(savedInstanceState);
         if (Build.VERSION.SDK_INT >= 29) {
             final View root = getWindow().getDecorView();
@@ -194,6 +199,16 @@ public class RA2Activity extends SDLActivity implements AudioManager.OnAudioFocu
     private static native void nativeKeepAutosave();
 
     @Override
+    public void finish() {
+        if (!isFinishing()) {
+            Intent launcher = new Intent(this, SetupActivity.class);
+            launcher.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            startActivity(launcher);
+        }
+        super.finish();
+    }
+
+    @Override
     protected void onDestroy() {
         // W6-01-10: destroyed without the player quitting (a configuration
         // change the activity cannot take in place, e.g. switching to gesture
@@ -214,7 +229,12 @@ public class RA2Activity extends SDLActivity implements AudioManager.OnAudioFocu
         // the player has quit, end the process so the next launch re-enters
         // main() with fresh statics instead of reusing this process. Done
         // after SDL's own teardown (an exit() from the SDL thread crashed).
-        if (isFinishing()) android.os.Process.killProcess(android.os.Process.myPid());
+        if (isFinishing()) {
+            Diagnostics.finish(this);
+            // Setup already resumed through finish(); only the native process
+            // ends here, after SDL teardown and diagnostic completion.
+            android.os.Process.killProcess(android.os.Process.myPid());
+        }
     }
 
     private void requestFocus() {
@@ -292,5 +312,10 @@ public class RA2Activity extends SDLActivity implements AudioManager.OnAudioFocu
         i.putExtra(SetupActivity.EXTRA_IMPORT, true);
         i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         startActivity(i);
+    }
+
+    /** Called by the pause menu on SDL's thread; Android UI stays on its UI thread. */
+    public void shareGameReport() {
+        runOnUiThread(() -> { if (!isFinishing()) Diagnostics.share(this); });
     }
 }

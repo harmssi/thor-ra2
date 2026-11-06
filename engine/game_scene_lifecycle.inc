@@ -70,10 +70,11 @@ bool autosaved_ = g_resumed_from_autosave_take();
 // (game_logical_size), re-lay the sidebar and the tactical view, and keep the
 // world point at the centre of the view where it was. [Engine affordance:
 // the original runs at a fixed ScreenWidth x ScreenHeight.]
-void relayout_canvas() {
-    int gw = kWinW, gh = kWinH;
-    game_logical_size(gw, gh);
-    if (gw == kWinW && gh == kWinH) return;
+void relayout_canvas(int gw=0,int gh=0) {
+    const bool was_zoomed=world_zoom_!=1.0;
+    world_zoom_=1.0;input_.set_screen_zoom(1.0);
+    if(gw<=0 || gh<=0)game_logical_size(gw, gh);
+    if (gw == kWinW && gh == kWinH) {if(was_zoomed)input_.set_viewport(playfield_w_,kWinH);return;}
     const int cx = -cam_.x + playfield_w_ / 2, cy = -cam_.y + kWinH / 2;   // world centre
     SDL_Log("[lifecycle] resize: canvas %dx%d -> %dx%d", kWinW, kWinH, gw, gh);
     set_canvas_size(gw, gh);

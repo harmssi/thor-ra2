@@ -169,8 +169,9 @@ std::vector<LocalIf> interfaces() {
             if (ioctl(s, SIOCGIFFLAGS, &q) != 0 || !(q.ifr_flags & IFF_UP)) continue;
             std::memcpy(&q, r, sizeof q);
             std::uint32_t mask = 0xFFFFFF00u;
+            // ifr_addr: same union slot as Linux ifr_netmask, and the only name macOS has.
             if (ioctl(s, SIOCGIFNETMASK, &q) == 0)
-                mask = ntohl(reinterpret_cast<sockaddr_in*>(&q.ifr_netmask)->sin_addr.s_addr);
+                mask = ntohl(reinterpret_cast<sockaddr_in*>(&q.ifr_addr)->sin_addr.s_addr);
             char nm[IFNAMSIZ + 1] = {0};
             std::memcpy(nm, r->ifr_name, IFNAMSIZ);
             out.push_back(LocalIf{ip, mask, std::string(nm)});

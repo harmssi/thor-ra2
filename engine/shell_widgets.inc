@@ -13,6 +13,11 @@
 // All geometry is LOGICAL 640x480, mapped through the page's ShellXform.
 // ============================================================================
 
+#ifdef __ANDROID__
+static constexpr bool kReadableTouchMenus=true;
+#else
+static constexpr bool kReadableTouchMenus=false;
+#endif
 struct ShellPainter {
     SDL_Renderer* ren;
     ra2engine::TextureCache& tc;
@@ -54,7 +59,7 @@ struct ShellPainter {
     bool fnt() const { return art.font && art.fnt_ok; }
     double text_w(const std::string& s, double logical_px) const {
         if (!fnt()) return 0.0;
-        const double sc = std::max(1.0, std::round(xf.s * logical_px / 16.0));
+        const double sc = ra2engine::menu_font_scale(xf.s,logical_px,kReadableTouchMenus);
         return fnt_text_width(*art.font, s) * sc / xf.s;   // in LOGICAL px
     }
     // align: 0 = left, 1 = centre, 2 = right; vertically centred in the rect.
@@ -64,14 +69,24 @@ struct ShellPainter {
         const ra2assets::Font& f = *art.font;
         // 12metfnt cell = 16 px; snap to an integer glyph scale (fractional
         // nearest-neighbour scaling visibly mangles the 1-px bevel strokes).
-        const double sc = std::max(1.0, std::round(xf.s * logical_px / 16.0));
+        double sc = ra2engine::menu_font_scale(xf.s,logical_px,kReadableTouchMenus);
         const SDL_Rect box = dev(lx, ly, lw, lh);
+        if(kReadableTouchMenus) sc=std::max(1.0,std::min(sc,
+            std::floor(box.h/static_cast<double>(std::max(1,f.height())))));
         const double tw = fnt_text_width(f, s) * sc;
         const double th = f.height() * sc;
         double tx = box.x;
         if (align == 1) tx = box.x + (box.w - tw) / 2.0;
         else if (align == 2) tx = box.x + box.w - tw;
+        SDL_Rect previous; const bool clipped=SDL_RenderIsClipEnabled(ren)==SDL_TRUE;
+        SDL_RenderGetClipRect(ren,&previous);
+        if(kReadableTouchMenus) {
+            SDL_Rect clip=box;
+            if(clipped) SDL_IntersectRect(&previous,&box,&clip);
+            SDL_RenderSetClipRect(ren,&clip);
+        }
         draw_fnt_text_f(ren, tc, f, *pal, s, tx, box.y + (box.h - th) / 2.0, keypfx, sc);
+        if(kReadableTouchMenus) SDL_RenderSetClipRect(ren,clipped ? &previous : nullptr);
     }
     // Yellow control text (dark red when disabled).
     void label(const std::string& s, int x, int y, int w, int h, int align, bool en = true) const {
@@ -136,7 +151,8 @@ struct ShellPainter {
 
     // The drop arrow: a solid red down-pointing triangle at the right edge.
     void arrow(const ra2engine::SbRect& r, bool en) const {
-        const SDL_Rect a = dev(r.x + r.w - 15, r.y + r.h / 2 - 3, 10, 6);
+        const bool compact=r.w<40;
+        const SDL_Rect a = dev(r.x + r.w - (compact?7:15), r.y + r.h / 2 - 3, compact?5:10, 6);
         SDL_SetRenderDrawColor(ren, en ? 255 : 159, 0, 0, 255);
         for (int k = 0; k < a.h; ++k) {
             const int inset = a.w * k / (2 * std::max(1, a.h));
@@ -148,6 +164,10 @@ struct ShellPainter {
                const SDL_Color* swatch = nullptr) const {
         if (hot && en) fill(dev(r), 60, 0, 0, 255);
         frame(dev(r), en);
+        if(r.w<40) {
+            label(fit(s,r.w-12),r.x+2,r.y,r.w-11,r.h,1,en);
+            arrow(r,en);return;
+        }
         int tx = r.x + 4;
         if (swatch) {
             const SDL_Rect sw = dev(r.x + 3, r.y + 4, 5, r.h - 8);

@@ -1,4 +1,5 @@
 #include "world.hpp"
+#include "slave_passage.hpp"
 #include "orig_math.hpp"   // Net L0: the original's FastMath, never libm in the sim
 #include "weapon_unit.hpp"  // Gap fix C
 
@@ -1051,6 +1052,8 @@ const std::vector<std::uint8_t>& World::amphib_grid() const {
 bool World::unit_can_enter_cell(const Unit& u, int x, int y) const {
     if (x < 0 || y < 0 || x >= grid_w_ || y >= grid_h_) return false;
     if (u.is_aircraft) return true;   // flight ignores the ground grids
+    if(const auto* b=slave_passage_building(u,buildings_,btypes()))
+        if(x>=b->cx && y>=b->cy && x<b->cx+b->fw && y<b->cy+b->fh)return true;
     const std::size_t i = static_cast<std::size_t>(y) * grid_w_ + x;
     const bool land = i < passable_.size() && passable_[i] != 0;
     const bool water = i < water_passable_.size() && water_passable_[i] != 0;
@@ -1143,6 +1146,7 @@ Unit& World::add_combat_unit(int cell_x, int cell_y, int house, const UnitCombat
     u.tg.t = c.tg;
     u.tg.in_playfield = cell_in_playfield(cell_x, cell_y);
     // Wave-7 fix (units): the type data (unit_w7.hpp).
+    u.gattling = c.gattling;
     u.w7.t = c.w7;
     u.detect_disguise = u.detect_disguise || c.w7.detect_disguise;   // W7-01-02
     // Projectile phase (P2) [RE: projectile.md]: the primary weapon's projectile
@@ -1482,6 +1486,8 @@ bool reaches(const Unit& u, Cellxy g) {
 void World::order_unit_move(int idx, int gx, int gy) {
     if (idx < 0 || idx >= static_cast<int>(units_.size())) return;
     Unit& u = units_[idx];
+    if (u.deploys_into>=0 && u.deploys_into<static_cast<int>(btypes().size()) && btypes()[u.deploys_into].slave_count>0)
+        u.manual_hold=false;
     u.tg.area_guard = false;   // W6-02-11: a move order leaves Area_Guard
     // w7fix-combat: a move order replaces the mission (Sleep / Harmless /
     // Sticky / Attack Move, a retaliation's saved order, the area-guard home).
@@ -5269,7 +5275,7 @@ bool World::ai_launch_unit_ready(int house, HouseAiRec& rec, QueueCat cat) {
     // W7-01-03: the AI spy's invented enemy-colour look is gone -- every spy
     // starts with its side's PermaDisguise (add_combat_unit).
     if (!tc.unit_roster[uslot].combat.deploys_into.empty()) {   // W2-SK-07: unfold it
-        order_deploy_mcv(uidx);
+        order_deploy_mcv_auto(uidx);
         ai_econ(rec).queues.placed(cat);
         return true;
     }
@@ -5564,11 +5570,14 @@ void World::step_ai_teams(double dt) {
                     ++refineries;
             for (const Unit& u : units_)
                 if (u.alive && u.die_time < 0.0 && u.house == h && u.is_harvester) ++miners;
+            // Economic recovery must not reserve spending money while there
+            // is no income source. Applies equally to Allied/Soviet houses.
+            const double miner_reserve = miners == 0 ? 0.0 : tc.rules.credit_reserve;
             if (miners < refineries * tc.harvesters_per_refinery)
                 for (int t = 0; t < (int)tc.unit_roster.size(); ++t)
                     if (tc.unit_roster[t].harvester &&
                         ai_econ(rec).credits >= tc.unit_roster[t].cost * rec.cfg.mods.cost_mul +
-                                           tc.rules.credit_reserve &&
+                                           miner_reserve &&
                         prerequisites_met(tc.unit_roster[t].prerequisite, buildings_,
                                           rec.cfg.roster, h, rec.cfg.groups)) {
                         want = t;
@@ -6023,6 +6032,7 @@ void World::step(double dt) {
     // P2 firewall: the launch sink is passed ONLY when projectiles are enabled;
     // nullptr keeps step_combat's instant-hit path byte-identical.
     std::vector<ProjectileLaunch> launches;
+    prepare_skirmish_mind_control();
     const std::vector<MoveRequest> reqs = step_combat(*this, units_, buildings_, occ_, dt,
                                                       projectiles_enabled_ ? &launches : nullptr,
                                                       &combat_rng_);   // G-50 ROF jitter
@@ -6237,7 +6247,10 @@ void World::step(double dt) {
     for (Unit& u : units_) {
         if (!u.alive || u.die_time >= 0.0) continue;
         if (u.crushing) continue;   // W5-B R-050: driving onto a crush target, not holding at range
-        if (u.target < 0 || !u.attack_order || u.target >= (int)units_.size()) continue;   // only explicit attackers hold at range
+        if (u.target < 0 || u.target >= (int)units_.size()) continue;
+        // Automatic pursuit also owns a path. Opportunity fire during a
+        // player move must keep that move, but guard/hunt pursuit stops at range.
+        if (!u.attack_order && u.tg.opportunity) continue;
         const Unit& t = units_[u.target];
         if (!t.alive || t.die_time >= 0.0) continue;
         // W5-B R-063: the same 3-D / elevation / cliff test step_combat fires
@@ -6278,6 +6291,19 @@ void World::step(double dt) {
             u.path_idx = 0;
             u.fx = u.cell_x;
             u.fy = u.cell_y;
+        }
+    }
+
+    // Ground Force Fire needs the same committed-cell hold as object attacks.
+    // Its approach path points at the clicked cell; without this pass it keeps
+    // walking down that path while firing. Checking and snapping in the same
+    // coordinate space avoids oscillating across the range boundary.
+    for (Unit& u : units_) {
+        if (!u.alive || u.die_time>=0 || u.path.empty() || !u.attack_order || u.attack_cell_x<0) continue;
+        if (weapon_in_range_from(*this,u,u.cell_x*256+om::ftol(u.sub_x),
+            u.cell_y*256+om::ftol(u.sub_y),unit_lept_z(u),u.attack_cell_x*256,
+            u.attack_cell_y*256,cell_level(u.attack_cell_x,u.attack_cell_y)*104)) {
+            u.path.clear();u.path_idx=0;u.fx=u.cell_x;u.fy=u.cell_y;
         }
     }
 
@@ -6328,6 +6354,8 @@ void World::step(double dt) {
                     if (u.ia.rng == 0) u.ia.rng = static_cast<std::uint32_t>(ui) * 2654435761u + 0x9E3779B9u;
                 }
                 InfTickCtx c;
+                c.shoveling = u.w7.slave_manager >= 0 && u.harv == HarvState::Harvesting;
+                c.carrying = u.w7.slave_manager >= 0 && u.bales_ore + u.bales_gems > 0;
                 c.moving = u.moving();
                 c.has_destination = !u.path.empty();
                 // W7-09-12 [RE: IsControlledByHuman 0x50B550 includes PlayerControl]
@@ -6343,7 +6371,8 @@ void World::step(double dt) {
                 // the Water/Beach under the deck is not its ground. Tanya crossing
                 // a bridge played the Swim set and the enter-water sound.
                 if (u.on_deck) c.in_water = false;
-                c.has_target = u.target >= 0 || u.target_building >= 0;
+                c.has_target = u.target >= 0 || u.target_building >= 0 || u.attack_cell_x>=0;
+                c.continuous_secondary=u.w5.p.airstrike_team>0;
                 c.dying = u.die_time >= 0.0;
                 c.deployed = u.deployed;
                 c.fire_flash = u.fire_flash;
@@ -6427,6 +6456,8 @@ void World::step(double dt) {
     // A pure INSERTION; `if (!abilities_any_) return;` (after the frame tick)
     // is the only cost every pre-P4 demo pays -- none registers a profile.
     step_abilities(dt);
+    resolve_skirmish_mind_control();
+    step_yuri_workers();
     step_victory();
     update_sub_offsets();   // W5-B R-061: derive the infantry sub-cell offsets
     // L2: every human house's production (was GameScene's per-tick glue,
@@ -6474,7 +6505,10 @@ int unit_ly(const Unit& u) { return ftol(u.fy * 256.0 + u.sub_y); }
 // w8fix-layer W8-05-03 / W8-04-02 [RE: an OnBridge object's coords carry
 // BridgeHeight (0x51F810)]: a ground unit on a deck is aimed at (and fires
 // from) the deck, 416 leptons over its cell's ground.
-int unit_lz(const Unit& u) { return u.is_aircraft ? ftol(u.altitude) : (u.on_deck ? 416 : 0); }
+int unit_lz(const Unit& u) {
+    if (unit_parachuting(u)) return (u.on_deck ? 416 : 0) + ftol(u.an.para_alt);
+    return u.is_aircraft ? ftol(u.altitude) : (u.on_deck ? 416 : 0);
+}
 int dist3(int ax, int ay, int az, int bx, int by, int bz) {
     const double dx = ax - bx, dy = ay - by, dz = az - bz;
     return ftol(om::sqrt(dx * dx + dy * dy + dz * dz));
@@ -6503,7 +6537,7 @@ void World::step_projectiles(double dt) {
     }
 }
 
-void World::launch_projectile(int attacker, int target_unit, int target_building) {
+void World::launch_projectile(int attacker, int target_unit, int target_building, int cell_x, int cell_y) {
     if (attacker < 0 || attacker >= static_cast<int>(units_.size())) return;
     const Unit& u = units_[attacker];
     const ProjectileSpec& spec = u.w_proj;
@@ -6524,6 +6558,8 @@ void World::launch_projectile(int attacker, int target_unit, int target_building
             if (best < 0.0 || d < best) { best = d; nx = c.x; ny = c.y; }
         }
         tgt = Vec3i{nx * 256, ny * 256, 0};
+    } else if (cell_x >= 0 && cell_y >= 0) {
+        tgt = Vec3i{cell_x * 256, cell_y * 256, deck_z(cell_x,cell_y)-cell_level(cell_x,cell_y)*104};
     } else {
         return;
     }
@@ -6535,7 +6571,7 @@ void World::launch_projectile(int attacker, int target_unit, int target_building
     const double ux = u.fx * 256.0, uy = u.fy * 256.0;
     double fwx = 0.0, fwy = 1.0;
     if (u.is_vehicle) {
-        const double a = u.turret_facing * (2.0 * kProjPi / 65536.0);
+        const double a = unit_weapon_facing(u) * (2.0 * kProjPi / 65536.0);
         fwx = om::sin(a);
         fwy = -om::cos(a);
     } else {
@@ -6543,8 +6579,18 @@ void World::launch_projectile(int attacker, int target_unit, int target_building
         if (len > 0.0) { fwx = dx / len; fwy = dy / len; }
     }
     Vec3i src;
-    src.x = ftol(ux + spec.flh[0] * fwx - spec.flh[1] * fwy);
-    src.y = ftol(uy + spec.flh[0] * fwy + spec.flh[1] * fwx);
+    const int burst=std::max(1,u.w6.burst);
+    const int shot=(u.w6.burst_index+burst-1)%burst;
+    const double lateral=spec.flh[1]*(shot&1 ? -1.0 : 1.0);
+    double mx=spec.flh[0]*fwx+lateral*fwy;
+    double my=spec.flh[0]*fwy-lateral*fwx;
+    if(u.is_vehicle && !u.is_aircraft && u.w7.t.has_turret && spec.turret_offset) {
+        const double a=u.body_facing*(2.0*kProjPi/65536.0);
+        mx+=spec.turret_offset*om::sin(a);
+        my-=spec.turret_offset*om::cos(a);
+    }
+    src.x = ftol(ux+mx);
+    src.y = ftol(uy+my);
     src.z = unit_lz(u) + spec.flh[2];
 
     const LaunchResult lr = compute_launch(spec, proj_rules_, src, tgt, proj_rng_);
@@ -6567,6 +6613,7 @@ void World::launch_projectile(int attacker, int target_unit, int target_building
 
     Projectile p;
     p.kind = spec.kind;
+    p.weapon_id = spec.weapon_id;
     p.attacker = attacker;
     p.target_unit = target_unit;
     p.target_building = target_building;
@@ -6625,7 +6672,7 @@ void World::init_homing(Projectile& p, const ProjectileSpec& spec, double launch
 bool World::homing_target(Projectile& p, Vec3i& out) const {
     if (p.target_unit >= 0 && p.target_unit < static_cast<int>(units_.size())) {
         const Unit& t = units_[p.target_unit];
-        if (!t.alive || t.die_time >= 0.0 || t.cargo_of >= 0) return false;
+        if (!t.alive || t.die_time >= 0.0 || !unit_combat_exposed(t)) return false;
         out = Vec3i{unit_lx(t), unit_ly(t), unit_lz(t)};
         return true;
     }
@@ -6633,6 +6680,10 @@ bool World::homing_target(Projectile& p, Vec3i& out) const {
         const Building& b = buildings_[p.target_building];
         if (!b.alive || b.state == Building::State::Dead) return false;
         out = Vec3i{p.tx, p.ty, 0};   // the foundation cell aimed at launch
+        return true;
+    }
+    if (p.target_unit < 0 && p.target_building < 0 && !p.target_air) {
+        out=Vec3i{p.tx,p.ty,p.tz}; // explicit ground cell stays a valid target
         return true;
     }
     return false;

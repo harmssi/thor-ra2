@@ -1,5 +1,11 @@
 #include "doctest.h"
 #include "../engine/harvest.hpp"
+#include "../engine/diagnostics.hpp"
+#include "ra2assets/asset_trace.hpp"
+#include "ra2assets/mix.hpp"
+#include <fstream>
+#include <iterator>
+#include <sstream>
 using namespace ra2engine;
 
 namespace {
@@ -56,6 +62,20 @@ int count_events(const std::vector<HarvestEvent>& evs, HarvestEvent::Kind k, int
 // Dock cell for the Rig's default NAREFN (cx=8, cy=8, fw=4, fh=3) is
 // (cx + fw/2, cy + fh) = (10, 11) [dock_cell_x/y, harvest.hpp].
 
+TEST_CASE("harvest: slave pickup and reload respect manager-resolved game-frame rates") {
+    for(int pickup:{30,150}) {
+        Rig r;r.types[0].slave_count=5;r.types[0].slave_harvest_rate=pickup;
+        r.types[0].slave_reload_rate=25;
+        auto& u=r.harv(2,2,false,4);u.w7.slave_manager=0;u.harv=HarvState::Harvesting;
+        r.ore.set(2,2,OreKind::Ore,10,0);
+        r.step((pickup-1)/15.0);CHECK(u.bales_ore==0);
+        r.step(2.0/15.0);CHECK(u.bales_ore==1);
+        u.harv=HarvState::Unloading;u.harv_timer=0;u.bales_ore=2;
+        r.step(24.0/15.0);CHECK(r.credits[0]==0);CHECK(u.bales_ore==2);
+        r.step(2.0/15.0);CHECK(r.credits[0]==r.values.ore);CHECK(u.bales_ore==1);
+    }
+}
+
 TEST_CASE("harvest: seek picks the nearest ore cell and requests a move") {
     Rig r;
     r.ore.set(3, 3, OreKind::Ore, 5, 0);
@@ -72,6 +92,34 @@ TEST_CASE("harvest: seek picks the nearest ore cell and requests a move") {
     CHECK(r.moves[0].gx == 3);
     CHECK(r.moves[0].gy == 3);
     CHECK(r.units[0].harv == HarvState::MoveToOre);
+}
+
+TEST_CASE("slave harvest: workers reserve separate ore cells near their manager") {
+    Rig r;
+    r.types[0].slave_count=2;
+    r.ore.set(2,3,OreKind::Ore,5,0);
+    r.ore.set(7,7,OreKind::Ore,5,0);
+    r.ore.set(6,7,OreKind::Ore,5,0);
+    for(int i=0;i<2;++i){auto& worker=r.harv(2+i,2);worker.w7.slave_manager=0;}
+    r.step(0.1);
+    REQUIRE(r.moves.size()==2);
+    CHECK_FALSE((r.moves[0].gx==r.moves[1].gx && r.moves[0].gy==r.moves[1].gy));
+    CHECK(r.moves[0].gy==7);CHECK(r.moves[1].gy==7);
+    CHECK(r.units[0].bales_ore==0);
+}
+
+TEST_CASE("slave harvest: different manager edges unload without the truck dock queue") {
+    Rig r;r.types[0].slave_count=2;
+    for(auto c:{Cellxy{7,8},Cellxy{12,10}}){
+        auto& worker=r.harv(c.x,c.y);worker.w7.slave_manager=0;
+        worker.harv=HarvState::ReturnToRef;worker.bales_ore=1;
+    }
+    r.step(0.1);
+    CHECK(r.units[0].harv==HarvState::Unloading);
+    CHECK(r.units[1].harv==HarvState::Unloading);
+    r.step(r.types[0].slave_reload_rate/15.0);
+    CHECK(r.credits[0]==50);
+    CHECK(r.units[0].bales_ore==0);CHECK(r.units[1].bales_ore==0);
 }
 
 TEST_CASE("harvest: gulps fill to exactly Storage then return") {
@@ -745,4 +793,51 @@ TEST_CASE("harvest: part-loaded miner with no ore in reach returns to the refine
     u.bales_ore = 5;
     r.step(0.1);
     CHECK(r.units[0].harv == HarvState::ReturnToRef);
+}
+
+
+TEST_CASE("diagnostics: bounded rotation, named asset trace, snapshots and miner warp") {
+    namespace fs=std::filesystem;
+    const auto root=fs::temp_directory_path()/"ra2-diagnostics-test12";
+    fs::create_directories(root);
+    const auto read=[&](const char* name){std::ifstream in(root/name,std::ios::binary);return std::string(std::istreambuf_iterator<char>(in),{});};
+    struct Cleanup { ~Cleanup(){ra2assets::asset_trace_callback().store(nullptr);diag::stop();} } cleanup;
+    REQUIRE(diag::start(root.u8string(),128));
+    diag::write(std::string(100,'a').data(),100);
+    diag::write(std::string(100,'b').data(),100);
+    CHECK(read("engine-previous.log")==std::string(100,'a'));
+    diag::flush();
+    CHECK(read("engine-current.log")==std::string(100,'b'));
+    diag::snapshot("skirmish.txt",std::string(70000,'s'));
+    CHECK(fs::file_size(root/"skirmish.txt")==65536);
+    diag::snapshot("../not-allowed.txt","no");CHECK_FALSE(fs::exists(root.parent_path()/"not-allowed.txt"));
+    REQUIRE(diag::start(root.u8string()));
+    diag::state().trace_assets=false;
+    diag::asset("test","disabled","synthetic",1);
+    CHECK(diag::state().seen.empty());
+    diag::state().trace_assets=true;
+    ra2assets::asset_trace_callback().store(diag::asset);
+    std::vector<uint8_t> buf;
+    auto put32=[&](uint32_t v){for(int i=0;i<4;++i)buf.push_back(static_cast<uint8_t>(v>>(8*i)));};
+    put32(0);buf.push_back(1);buf.push_back(0);put32(1);
+    put32(ra2assets::mix_id("probe.ini"));put32(0);put32(1);buf.push_back('x');
+    auto mix=ra2assets::MixFile::open(std::move(buf));
+    REQUIRE(mix.find("probe.ini")!=nullptr);REQUIRE(mix.find("probe.ini")!=nullptr);
+    diag::flush();
+    auto assets=read("assets-current.log");
+    CHECK(assets.find("file-hit probe.ini")!=std::string::npos);
+    CHECK(assets.find("file-hit probe.ini",assets.find("file-hit probe.ini")+1)==std::string::npos);
+    for(int i=0;i<9000;++i)diag::asset("test",std::to_string(i),"synthetic",1);
+    CHECK(diag::state().seen.size()==8192);
+    CHECK(fs::file_size(root/"assets-current.log")<=1024*1024);
+    Rig logged,plain;
+    for(auto* r:{&logged,&plain}){r->harv(1,1,true,20);r->units[0].harv=HarvState::ReturnToRef;r->units[0].bales_ore=20;}
+    logged.step(kChronoWarpSecs);
+    diag::flush();
+    const auto log=read("engine-current.log");
+    CHECK(log.find("WARP begin")!=std::string::npos);CHECK(log.find("WARP complete")!=std::string::npos);
+    diag::stop();plain.step(kChronoWarpSecs);
+    CHECK(logged.units[0].cell_x==plain.units[0].cell_x);CHECK(logged.units[0].cell_y==plain.units[0].cell_y);
+    CHECK(logged.units[0].harv==plain.units[0].harv);CHECK(logged.units[0].dock_refinery==plain.units[0].dock_refinery);
+    CHECK(logged.events.size()==plain.events.size());CHECK(logged.claims_of(0)==plain.claims_of(0));
 }

@@ -65,7 +65,7 @@ target_sources(ra2assets_tests PRIVATE tests/test_rules.cpp)
 target_sources(ra2assets_tests PRIVATE tests/test_roster.cpp)
 target_sources(ra2assets_tests PRIVATE tests/test_art.cpp)
 target_sources(ra2assets_tests PRIVATE tests/test_theater_name.cpp)
-target_sources(ra2assets_tests PRIVATE tests/test_asset_fs.cpp)
+target_sources(ra2assets_tests PRIVATE tests/test_asset_fs.cpp tests/test_yuri_art_lookup.cpp)
 target_sources(ra2assets_tests PRIVATE tests/test_sounds.cpp)
 target_sources(ra2assets_tests PRIVATE tests/test_map.cpp)
 target_sources(ra2assets_tests PRIVATE tests/test_pkt.cpp)
@@ -105,7 +105,7 @@ target_sources(ra2assets_tests PRIVATE tests/test_orig_math.cpp engine/orig_math
 # reconciliation are unit-tested here (test_world.cpp) alongside the projection
 # it must agree with. Compiled from the same single source of truth as the
 # ra2engine executable below (same pattern as iso_project.cpp / pathfind.cpp).
-target_sources(ra2assets_tests PRIVATE tests/test_world.cpp engine/world.cpp
+target_sources(ra2assets_tests PRIVATE tests/test_world.cpp engine/world.cpp engine/world_yuri.cpp tests/test_yuri_core.cpp
                                        engine/world_loco.cpp engine/locomotion.cpp tests/test_locomotion.cpp  # W7 locomotion
                                        engine/world_econ.cpp  # L2 per-house economy
                                        tests/test_house_econ.cpp
@@ -121,7 +121,7 @@ target_sources(ra2assets_tests PRIVATE tests/test_input.cpp engine/input.cpp eng
 # G-04: KeyboardMD.ini hotkey table.
 target_sources(ra2assets_tests PRIVATE tests/test_hotkeys.cpp engine/hotkeys.cpp)
 # G-70/G-71: touch gesture layer.
-target_sources(ra2assets_tests PRIVATE tests/test_touch_gestures.cpp engine/touch_gestures.cpp)
+target_sources(ra2assets_tests PRIVATE tests/test_touch_gestures.cpp tests/test_touch_bar_layout.cpp tests/test_yuri_menu.cpp engine/touch_gestures.cpp)
 # occupancy.cpp is a pure C++17 cell-ownership grid (no SDL) used by the
 # multi-unit movement/collision logic; compiled into both this test binary and
 # ra2engine from one source of truth (same pattern as pathfind.cpp/world.cpp).

@@ -1,4 +1,5 @@
 #include "ra2assets/asset_fs.hpp"
+#include "ra2assets/asset_trace.hpp"
 
 #include <cctype>
 #include <cstdio>
@@ -50,6 +51,8 @@ std::vector<AssetMixSpec> asset_search_order(const TheaterChain* chain,
     ra2(c->iso_mix);                                   // ISOTEMP / ISOSNOW / ISOURB
     ra2("isogen.mix");
     ra2("neutral.mix");
+    out.push_back({"language.mix", "cameo.mix"});
+    out.push_back({"cameo.mix", ""});
     // [RE-FALLBACK] SNOW: Init_Theater never opens GENERIC.MIX for a snow
     // scenario that is the session's first (prev theater -1); a session that
     // played a non-snow map first still has it open. The clone keeps it as
@@ -66,6 +69,9 @@ std::vector<AssetMixSpec> asset_search_order(const TheaterChain* chain,
     md("genermd.mix");
     md("isogenmd.mix");
     md("cameomd.mix");
+    out.push_back({"langmd.mix", "cameomd.mix"});
+    out.push_back({"language.mix", "cameomd.mix"});
+    out.push_back({"cameomd.mix", ""});
     // Theater md overlays: "%sMD.MIX" over the theater names.
     const std::string an = lower(c->art_mix);          // "temperat.mix"
     md(an.substr(0, an.size() - 4) + "md.mix");        // temperatmd.mix / snowmd.mix / urbanmd.mix
@@ -121,15 +127,20 @@ AssetFS::AssetFS(const std::string& install_dir, const TheaterChain* chain)
 }
 
 const MixEntry* AssetFS::find(const std::string& name, const MixFile** owner, std::string* label,
-                              bool ra2_only) const {
+                              bool ra2_only, bool prefer_yr) const {
     if (name.empty()) return nullptr;
     const uint32_t id = mix_id(name);
     const std::size_t end = ra2_only ? yr_begin_ : mixes_.size();
-    for (std::size_t k = 0; k < end; ++k) {
+    // Opt-in YR override: retain relative archive order in each group and
+    // fall back to classic assets when the expansion has no replacement.
+    for (std::size_t n = 0; n < end; ++n) {
+        const std::size_t k = prefer_yr && !ra2_only
+            ? (n < end - yr_begin_ ? yr_begin_ + n : n - (end - yr_begin_)) : n;
         const auto& m = mixes_[k];
         if (const MixEntry* e = m.second->find(id)) {
             if (owner) *owner = m.second.get();
             if (label) *label = m.first;
+            trace_asset("resolve",name,m.first,e->size);
             return e;
         }
     }

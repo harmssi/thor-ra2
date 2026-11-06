@@ -23,6 +23,7 @@
 #define SDL_MAIN_HANDLED
 #endif
 #include <SDL.h>
+#include "ground_presentation.hpp"
 #ifdef RA2_ANDROID_CLI
 // No Java activity: SDL's Android pref / storage paths need JNI and would
 // crash. The CLI uses RA2_PREF_DIR (else no settings file) like --play does.
@@ -42,6 +43,28 @@ static char* ra2_cli_pref_path() {
 #include <climits>
 #include <cmath>
 #include <cstdint>
+#include "weapon_sound_loop.hpp"
+#include "diagnostics.hpp"
+#include "report_probe.hpp"
+#include "vehicle_animation.hpp"
+#include "presentation_policy.hpp"
+#include "building_transition.hpp"
+#include "power_cameo.hpp"
+#include "psychic_links.hpp"
+#include "psychic_sensor.hpp"
+#include "weapon_art.hpp"
+#include "projectile_presentation.hpp"
+ra2engine::ProjectilePresentation g_projectile_motion;
+#include "unit_presentation.hpp"
+#include "skirmish_layout.hpp"
+#include "faction_art.hpp"
+#include "disk_laser.hpp"
+ra2engine::UnitPresentation g_unit_motion;
+#include "shell_layout.hpp"
+#include "ra2assets/asset_trace.hpp"
+#if defined(__ANDROID__) && !defined(RA2_ANDROID_CLI)
+#include <SDL_system.h>
+#endif
 #include <cstring>
 #include <cstdio>
 #include <cstdlib>
@@ -77,6 +100,9 @@ static char* ra2_cli_pref_path() {
 #include "flight.hpp"       // altitude_to_screen_dy (CB-2 raised-sprite draw)
 #include "harvest.hpp"     // OreValues/HarvestEvent/dock_cell + step_harvest (Economy phase)
 #include "input.hpp"
+#include "touch_bar_layout.hpp"
+#include "faction_support.hpp"
+#include "menu_readability.hpp"
 #include "hotkeys.hpp"       // G-04 KeyboardMD.ini command table
 #include "bink_async.hpp"     // W5-E2 R-173: Bink decoding off the main thread
 #include "touch_gestures.hpp" // G-70 (controls self-test drives the real gesture layer)
@@ -98,6 +124,7 @@ static char* ra2_cli_pref_path() {
 #include <ctime>             // P7: save timestamps
 #include "sidebar.hpp"
 #include "thor.hpp"   // Thor RA2: command deck on a second screen
+#include "touch_theme.hpp"
 #include "texture_cache.hpp"
 #include "skirmish.hpp"
 #include "skirmish_lobby.hpp"
@@ -111,7 +138,10 @@ static char* ra2_cli_pref_path() {
 #include "campaign.hpp"    // P10 campaign core [RE: campaign.md]
 #include "ra2assets/csf.hpp" // P10 briefing/objective text
 #include "voxel_raster.hpp"
+#include "voxel_animation_cache.hpp"
+#include "terrain_tilt.hpp"
 #include "weapon_resolve.hpp"  // Gap fix C: TechnoType weapon slots
+#include "weapon_unit.hpp"     // Shared combat/presentation weapon facing
 #include "gamespeed.hpp"       // Gap fix C: RE-T1 logic rate per GameSpeed
 #include "world.hpp"
 #include "abil_w5_rules.hpp"   // wave-5 (agent C): requires_stolen_bits
@@ -192,7 +222,8 @@ const char* g_sidebar_mix = "sidec01.mix";
 // side-art key ("sb:*", the SW clock "sw:gclk*") is cached per side.
 inline std::string side_tex_key(const std::string& k) {
     if (k.compare(0, 3, "sb:") == 0 || k.compare(0, 7, "sw:gclk") == 0)
-        return (std::string(g_sidebar_mix) == "sidec02.mix" ? "S2" : "S1") + k;
+        return (std::string(g_sidebar_mix) == "sidec03.mix" ? "S3" :
+                std::string(g_sidebar_mix) == "sidec02.mix" ? "S2" : "S1") + k;
     return k;
 }
 void hud_font_load(const ra2assets::MixFile& ra2);   // W2-UI-12 (hud_text.inc)
@@ -313,6 +344,7 @@ Assets load_assets(const std::string& dir, const ra2assets::MixFile& ra2,
     if (!me) throw std::runtime_error("map entry not found in " + sel.mix + ": " +
                                       (sel.name.empty() ? "id 0x133a0cb2" : sel.name));
     auto map_raw = maps.read(*me);
+    if(ra2engine::diag::state().enabled.load())ra2engine::diag::note("MAP archive=%s entry=%s id=%08x bytes=%zu fnv1a64=%016llx",sel.mix.c_str(),sel.name.c_str(),me->id,map_raw.size(),static_cast<unsigned long long>(ra2engine::diag::fingerprint(map_raw.data(),map_raw.size())));
     MapFile map = MapFile::parse(std::string(map_raw.begin(), map_raw.end()));
 
     // Theater chain [RE: maps.md §6 + §9.4]. Replaces the old TEMPERATE-only
@@ -547,9 +579,12 @@ struct UnitAssets {
 // required asset failed to load (logged once); the game then runs infantry-only
 // and never touches this struct's caches. Move-only (unique_ptr member); loaded
 // once per mode entry point, held by reference thereafter.
+static std::atomic<std::uint64_t> g_model_asset_id{1};
 struct VehicleAssets {
+    std::uint64_t render_key=g_model_asset_id.fetch_add(1,std::memory_order_relaxed);
     ra2engine::FacingSet hull[2], turret[2], barrel[2];  // index = house (0 Allied, 1 Soviet)
     bool has_turret = false, has_barrel = false;
+    bool turret_spins = false;
     ra2engine::UnitCombat combat;
     int flh[3] = {0, 0, 0};                        // PrimaryFireFLH F,L,H (leptons, turret space)
     int turret_offset = 0;                         // W3-B art TurretOffset= (leptons along the hull)
@@ -578,6 +613,7 @@ struct VehicleAssets {
     int shadow_index = 0;   // W7-12-44 art ShadowIndex= (+0x7FC): the one section the shadow uses
     std::shared_ptr<const VoxelSrc> vsrc;
     mutable std::map<int, std::shared_ptr<std::array<ra2engine::FacingSet, 3>>> color_sets;
+    mutable ra2engine::VoxelAnimationCache animation_sprites;
     // W2-GA-12: hull ground-shadow masks per facing (colour-independent).
     mutable std::shared_ptr<std::vector<ra2engine::VoxelSprite>> shadow;
 };
@@ -586,7 +622,8 @@ struct VehicleAssets {
 // immutable once published, so returned references stay valid).
 std::mutex g_vxl_mu;
 // W3-B: harvester image -> its UnloadingClass assets (GameScene fills it).
-std::map<std::string, const VehicleAssets*> g_unloading_class;
+std::map<std::string, std::shared_ptr<const VehicleAssets>> g_unloading_class;
+std::mutex g_unloading_class_mu;
 int g_draw_unit_idx = -1;   // the unit render_world is drawing (walk stage lookup)
 
 // All SHP + palette assets for one building type, resolved through the
@@ -681,6 +718,8 @@ struct BuildingAssets {
 std::vector<uint8_t> read_ra2md_file(const std::string& dir, const std::string& name);
 Ini load_ini_from_ra2md(const std::string& dir, const std::string& name) {
     const std::vector<uint8_t> ini_bytes = read_ra2md_file(dir, name);
+    if(ra2engine::diag::state().enabled.load())ra2engine::diag::note("INI loaded name=%s bytes=%zu fnv1a64=%016llx",name.c_str(),ini_bytes.size(),
+        static_cast<unsigned long long>(ra2engine::diag::fingerprint(ini_bytes.data(),ini_bytes.size())));
     return Ini::parse(std::string(ini_bytes.begin(), ini_bytes.end()));
 }
 
@@ -692,6 +731,7 @@ std::vector<uint8_t> read_ra2md_file(const std::string& dir, const std::string& 
     std::vector<uint8_t> ini_bytes;
     if (const MixEntry* e = top.find(mix_id(name))) {
         ini_bytes = top.read(*e);
+        ra2assets::trace_asset("ini-source",name,"ra2md.mix",ini_bytes.size());
     } else {
         static const char* candidates[] = {
             "localmd.mix",  "expandmd01.mix", "expandmd02.mix", "expandmd03.mix",
@@ -703,6 +743,7 @@ std::vector<uint8_t> read_ra2md_file(const std::string& dir, const std::string& 
                 MixFile nested = top.open_nested(cand);
                 if (const MixEntry* e2 = nested.find(mix_id(name))) {
                     ini_bytes = nested.read(*e2);
+                    ra2assets::trace_asset("ini-source",name,std::string("ra2md.mix/")+cand,ini_bytes.size());
                     break;
                 }
             } catch (const std::exception&) {
@@ -1627,6 +1668,11 @@ void enable_live_infantry_anims(ra2engine::World& world, const Ini& rules_ini, c
             }
         }
         t.crawls = yes(art_ini, image, "Crawls", true);
+        if(id=="BRUTE" || id=="SLAV" || id=="YURI" || id=="YURIPR")
+            for(int q : {ra2engine::kSqReady,ra2engine::kSqWalk,ra2engine::kSqFireUp,ra2engine::kSqSecondaryFire,ra2engine::kSqShovel,ra2engine::kSqCarry}) {
+                const auto& e=t.e[q];
+                ra2engine::diag::note("INF_SEQUENCE id=%s image=%s table=%s action=%s present=%d first=%d count=%d facing_stride=%d",id.c_str(),image.c_str(),seq.c_str(),ra2engine::inf_seq_name(q),e.has,e.first,e.count,e.fmult);
+            }
         t.fearless = yes(rules_ini, id, "Fearless", false);
         t.fraidycat = yes(rules_ini, id, "Fraidycat", false);
         t.not_human = yes(rules_ini, id, "NotHuman", false);
@@ -1789,6 +1835,8 @@ VehicleAssets load_vehicle_assets(const std::string& dir, const ra2assets::MixFi
         va.combat.is_vehicle = true;
         va.combat.rot = rules.rot(unit_id);
         va.combat.turret = rules.has_turret(unit_id);
+        va.turret_spins = rules.section_flag(unit_id,"TurretSpins",false);
+        ra2engine::diag::note("ART_BIND owner=%s image=%s turret_spins=%d rot=%d",unit_id.c_str(),va.combat.image.c_str(),va.turret_spins,va.combat.rot);
         va.combat.speed_cps = speed_to_cps(ru.speed);  // Speed 6 -> 1.41 cps (G-42)
 
         const std::string image = va.combat.image;  // "HTNK"
@@ -1819,7 +1867,18 @@ VehicleAssets load_vehicle_assets(const std::string& dir, const ra2assets::MixFi
             // first, YR localmd.mix last) [RE: asset-search.md §1].
             {
                 std::vector<uint8_t> vr, hr;
-                if (asset_read(part_base + ".vxl", vr) && asset_read(part_base + ".hva", hr)) {
+                const bool yuri_art = rules_ini.get(unit_id, "Owner").find("YuriCountry") != std::string::npos;
+                auto read_model = [&](const std::string& file, std::vector<uint8_t>& bytes) {
+                    const MixFile* owner = nullptr;
+                    std::string source;
+                    const MixEntry* entry = asset_fs().find(file, &owner, &source, false, yuri_art);
+                    if (!entry) return false;
+                    bytes = owner->read(*entry);
+                    std::cerr << "[vehicle-art] type=" << unit_id << " image=" << image
+                              << " file=" << file << " archive=" << source << "\n";
+                    return true;
+                };
+                if (read_model(part_base + ".vxl", vr) && read_model(part_base + ".hva", hr)) {
                     m = ra2assets::load_vxl(vr.data(), vr.size());
                     h = ra2assets::load_hva(hr.data(), hr.size());
                     return true;
@@ -1890,13 +1949,7 @@ VehicleAssets load_vehicle_assets(const std::string& dir, const ra2assets::MixFi
                       << std::endl;
         // P2: the muzzle offset is also the projectile launch point (projectile.md
         // §4 step 1 -- FLH resolved before the bullet exists).
-        for (int k = 0; k < 3; ++k) {
-            va.combat.proj.flh[k] = va.flh[k];
-            // Gap fix C: the other slots launch from the same muzzle.
-            va.combat.elite_proj.flh[k] = va.flh[k];
-            va.combat.secondary.proj.flh[k] = va.flh[k];
-            va.combat.elite_secondary.proj.flh[k] = va.flh[k];
-        }
+        ra2engine::bind_unit_weapon_art(va.combat,art,rules,unit_id);
 
         {   // G-16: keep the sources for per-colour sets.
             auto src = std::make_shared<VehicleAssets::VoxelSrc>();
@@ -2205,6 +2258,8 @@ UnitRoster load_unit_roster_table(const std::string& dir, const ra2assets::MixFi
                 }
             }
 
+            if (!have_cameo) have_cameo = asset_cameo_fallback(d.cameo, cshp);
+
             if (e.vehicle && !art.voxel(image) &&
                 to_lower(rules.section_string(e.id, "Locomotor", "")).find("2bea74e1") != std::string::npos) {
                 // W2-AN-15 [RE: artmd [DLPH]/[SQD] Voxel=no WalkFrames= FiringFrames=]:
@@ -2241,6 +2296,7 @@ UnitRoster load_unit_roster_table(const std::string& dir, const ra2assets::MixFi
                 d.combat.is_vehicle = false;
                 d.combat.speed_cps = speed_to_cps(ru.speed);
             }
+            ra2engine::bind_unit_weapon_art(d.combat,art,rules,e.id);
             ur.defs.push_back(std::move(d));
             ur.cameos.push_back(std::move(cshp));
             ur.has_cameo.push_back(have_cameo ? 1 : 0);
@@ -2404,7 +2460,7 @@ int spawn_harvester(ra2engine::World& world, const VehicleAssets& va, bool chron
 std::vector<int> refinery_type_indices(const BuildingAssets& ba, const Rules& rules) {
     std::vector<int> v;
     for (int i = 0; i < static_cast<int>(ba.roster.size()); ++i)
-        if (!rules.free_unit(ba.roster[i].id).empty()) v.push_back(i);
+        if (!rules.free_unit(ba.roster[i].id).empty() || ba.roster[i].slave_count > 0) v.push_back(i);
     return v;
 }
 
@@ -2712,11 +2768,16 @@ BuildingAssets load_building_assets(const ra2assets::MixFile& ra2,
     };
     (void)get_mix;
 
-    ba.roster.reserve(40);
-    ba.art.reserve(40);
+    std::vector<std::string> building_ids(std::begin(kRoster),std::end(kRoster));
+    // Append supported vanilla Yuri structures; retain all existing indices.
+    for(const auto& id : rules.listed_types("BuildingTypes")) {
+        if(ra2engine::vanilla_yuri_building(id) &&
+           std::find(building_ids.begin(),building_ids.end(),id)==building_ids.end()) building_ids.push_back(id);
+    }
+    ba.roster.reserve(building_ids.size());
+    ba.art.reserve(building_ids.size());
     int ok_n = 0;
-    for (const char* id_c : kRoster) {
-        const std::string id = id_c;
+    for (const std::string& id : building_ids) {
         // [RE: roster2.md §A, RE-FALLBACK] P6 indices honour rules Image= for the
         // art lookups (AMRADR draws as GAAIRC). Gap owner A (G-26/G-64): ALL
         // indices now honour Image= -- keeping the id for 0..23 left the Prism
@@ -2727,6 +2788,15 @@ BuildingAssets load_building_assets(const ra2assets::MixFile& ra2,
         const std::string art_id = rules.image(id);
         ra2engine::BuildingTypeDef d;
         d.id = id;
+        const std::string slave = rules.section_string(id, "Enslaves", "");
+        if (!slave.empty()) {
+            d.slave_combat = resolve_combat_unit(rules, slave).combat;
+            d.slave_count = std::clamp(static_cast<int>(rules.section_double(id, "SlavesNumber", 5)), 0, 32);
+            d.slave_regen_rate = std::max(1, static_cast<int>(rules.section_double(id, "SlaveRegenRate", 500)));
+            d.slave_storage = std::max(1, rules.storage(slave));
+            d.slave_harvest_rate=std::max(1,static_cast<int>(rules.section_double(slave,"HarvestRate",150)));
+            d.slave_reload_rate=std::max(1,static_cast<int>(rules.section_double(id,"SlaveReloadRate",25)));
+        }
         d.fw = d.fh = 1;
         art.foundation(art_id, d.fw, d.fh);
         d.strength = rules.strength(id);
@@ -2818,6 +2888,7 @@ BuildingAssets load_building_assets(const ra2assets::MixFile& ra2,
                         slot.has_cameo = true;
                     }
                 } catch (const std::exception&) { slot.has_cameo = false; }
+                if (!slot.has_cameo) slot.has_cameo = asset_cameo_fallback(d.cameo, slot.cameo);
             }
         } catch (const std::exception& ex) {
             std::cerr << "[building] " << id << " main image missing (" << ex.what() << ")\n";
@@ -2833,6 +2904,12 @@ BuildingAssets load_building_assets(const ra2assets::MixFile& ra2,
             std::cerr << (k ? "," : "") << d.prerequisite[k];
         std::cerr << "]\n";
         ra2engine::fill_building_weapons(rules, id, d);   // Gap fix C (G-40): defenses
+        int flh[3]={0,0,0};
+        if(art.fire_flh(art_id,flh)) for(int k=0;k<3;++k) {
+            d.weapon[0].proj.flh[k]=d.weapon[1].proj.flh[k]=flh[k];
+            for(auto& slot:d.gattling.weapons) slot.proj.flh[k]=flh[k];
+            for(auto& slot:d.gattling.elite_weapons) slot.proj.flh[k]=flh[k];
+        }
         // W6-04-04: a Wall=yes building takes damage stages (art DamageLevels=).
         d.w6.wall_levels = d.wall ? art.damage_levels(art_id) : 0;   // reuses W6-03-01 BuildingTypeDef::wall
         d.w6.powers_unit = rules.image(rules.section_string(id, "PowersUnit", ""));   // W6-04-18
@@ -2873,7 +2950,32 @@ BuildingAssets load_building_assets(const ra2assets::MixFile& ra2,
     // Sidebar chrome (player side = Allied sidec01) [RE-GATE: construction.md
     // §11]: four SEPARATE 28x27 tab SHPs + the 55-frame gclock2.shp clock.
     try {
-        MixFile sb = ra2.open_nested(g_sidebar_mix);   // G-91: sidec02 for a Soviet player
+        MixFile sb = [&]() {
+            if (std::string(g_sidebar_mix)=="sidec03.mix") {
+                auto complete=[](const MixFile& archive) {
+                    for (const char* file : {"sidebar.pal","top.shp","side1.shp","side2.shp",
+                        "tab00.shp","tab01.shp","tab02.shp","tab03.shp","powerp.shp","credits.shp","gclock2.shp"})
+                        if (!archive.find(std::string(file))) return false;
+                    return true;
+                };
+                for (const char* name : {"sidec03.mix","sidec03md.mix"}) {
+                    try {
+                        MixFile expansion=MixFile::open_path(env_install_dir()+"ra2md.mix");
+                        MixFile found=expansion.open_nested(name);
+                        if (complete(found)) {
+                            std::cerr<<"[sidebar] Yuri art from ra2md.mix/"<<name<<"\n";
+                            return found;
+                        }
+                    } catch(const std::exception&) {}
+                    try { auto found=ra2.open_nested(name); if(complete(found)) return found; } catch(const std::exception&) {}
+                    try { auto found=MixFile::open_path(env_install_dir()+name); if(complete(found)) return found; } catch(const std::exception&) {}
+                }
+                // Incomplete installs retain usable classic chrome and hit boxes.
+                std::cerr<<"[sidebar] Yuri archive absent; using Allied fallback\n";
+                g_sidebar_mix="sidec01.mix";ra2engine::set_sidebar_style(0);
+            }
+            return ra2.open_nested(g_sidebar_mix);
+        }();
         if (const MixEntry* se = sb.find(std::string("sidebar.pal"))) {   // W2-UI-01
             auto raw = sb.read(*se);
             ba.sb_pal = Palette::load(raw.data(), raw.size());
@@ -2902,7 +3004,8 @@ BuildingAssets load_building_assets(const ra2assets::MixFile& ra2,
         auto opt = [&](ra2assets::ShpFile& dst, const char* fn, bool& flag) {
             try { dst = load_sb(fn); flag = true; } catch (const std::exception&) {}
         };
-        opt(ba.sb_radar, "radar.shp", ba.has_radar);
+        if (std::string(g_sidebar_mix)=="sidec03.mix") opt(ba.sb_radar,"radary.shp",ba.has_radar);
+        if (!ba.has_radar) opt(ba.sb_radar, "radar.shp", ba.has_radar);
         opt(ba.sb_side3, "side3.shp", ba.has_side3);
         opt(ba.sb_addon, "addon.shp", ba.has_addon);
         bool up = false, dn = false;
@@ -2961,6 +3064,18 @@ BuildingAssets load_building_assets(const ra2assets::MixFile& ra2,
             }
     } catch (const std::exception&) {}
     std::cerr << "[sw] SW cameos loaded=" << ba.sw_cameos.size() << "\n";
+    try {
+        std::string name=rules.section_string("PsychicRevealSpecial","SidebarImage","psyricon");
+        if (name.find('.')==std::string::npos) name+=".shp";
+        const MixFile* owner=nullptr;std::string source;
+        if (const auto* entry=asset_fs().find(name,&owner,&source,false,true)) {
+            auto shp=ShpFile::load(owner->read(*entry));
+            if (shp.count()>0) ba.sw_cameos[static_cast<int>(ra2engine::SuperweaponType::PsychicReveal)]=std::move(shp);
+            ra2engine::diag::note("POWER_ART type=PsychicReveal file=%s source=%s",name.c_str(),source.c_str());
+        }
+    } catch(const std::exception& error) {
+        ra2engine::diag::note("POWER_ART missing type=PsychicReveal reason=%s",error.what());
+    }
 
     // Shared death explosion (TWLT070) from conquer.mix + anim.pal (guarded;
     // render-only). Mirrors the vehicle death-anim path [RE: building-render.md §4].
@@ -2981,6 +3096,13 @@ BuildingAssets load_building_assets(const ra2assets::MixFile& ra2,
         {"POWER", rules.prerequisite_group("Power")},
         {"BARRACKS", rules.prerequisite_group("Barracks")},
         {"PROC", rules.prerequisite_group("Proc")},
+        {"PROC_ALTERNATE", {[&] {
+            std::string id = rules.section_string("General", "PrerequisiteProcAlternate", "");
+            const auto comment = id.find(';'); if (comment != std::string::npos) id.resize(comment);
+            id.erase(std::remove_if(id.begin(),id.end(),[](unsigned char c){return std::isspace(c);}),id.end());
+            for (char& c : id) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+            return id;
+        }()}},
         {"FACTORY", rules.prerequisite_group("Factory")},
         {"RADAR", rules.prerequisite_group("Radar")},
         {"TECH", rules.prerequisite_group("Tech")},
@@ -3456,6 +3578,40 @@ void draw_building(SDL_Renderer* ren, ra2engine::TextureCache& tc, const ra2engi
     }
 }
 
+void draw_slave_miner_pack_fx(SDL_Renderer* ren, ra2engine::TextureCache& tc, const SlaveMinerPackFx& fx,
+                              const BuildingAssets& ba, const ra2engine::Camera& cam, int W, int H) {
+    if (fx.type < 0 || fx.type >= static_cast<int>(ba.art.size()) ||
+        fx.type >= static_cast<int>(ba.roster.size())) return;
+    const BuildingArt& art = ba.art[static_cast<std::size_t>(fx.type)];
+    if (!art.ok || !art.has_buildup || fx.duration <= 0) return;
+    const std::string& id = ba.roster[static_cast<std::size_t>(fx.type)].id;
+    const long elapsed = g_pres_tick - fx.start;
+    if (elapsed < 0 || elapsed >= fx.duration) return;
+    const ra2assets::ShpFile& shp = art.buildup;
+    const int image_frames = shp.count() / 2;
+    if (image_frames <= 0) return;
+    const int frame = ra2engine::packing_frame(image_frames,fx.start,fx.duration,g_pres_tick);
+    const ra2engine::ScreenPt dp = ra2engine::building_draw_point(fx.cx, fx.cy, fx.level);
+    const int cx = dp.x + cam.x, cy = dp.y + cam.y;
+    if (shp.count() >= image_frames * 2) {
+        const std::string shadow_key = "slavepack-shadow:" + id + ":" + std::to_string(frame);
+        if (g_fx) g_fx->blit_shadow(ren, tc, shp, shadow_key, frame + image_frames, cx, cy, W, H);
+    }
+    const ra2assets::ShpFile::Frame f = shp.frame_info(frame);
+    SDL_Rect dst{cx - shp.width() / 2 + f.x, cy - shp.height() / 2 + f.y, f.w, f.h};
+    if (f.w <= 0 || f.h <= 0 || dst.x + dst.w <= 0 || dst.y + dst.h <= 0 || dst.x >= W || dst.y >= H) return;
+    const std::string key = "slavepack:" + id + ":c" +
+                            std::to_string(ra2engine::house_draw_key(fx.house)) + ":" + std::to_string(frame);
+    SDL_Texture* tex = static_cast<SDL_Texture*>(tc.peek(key));
+    if (!tex) {
+        const std::vector<uint8_t> indexed = shp.decode_indexed(frame);
+        const ra2assets::Palette pal =
+            art.own_pal ? *art.own_pal : ra2engine::house_draw_palette(ba.unit_pal, fx.house);
+        tex = static_cast<SDL_Texture*>(tc.get(key, indexed.data(), f.w, f.h, pal));
+    }
+    ra2engine::blit_object(ren, tex, &dst);
+}
+
 // W6-01-01: true when building `b`'s drawn art has an opaque pixel at window
 // pixel (px, py): the main frame draw_building uses (the SAME SHP / frame /
 // anchor: buildup, mirrored sell, healthy / damaged) and, in the live game,
@@ -3559,9 +3715,22 @@ void vxl_prewarm(const VehicleAssets& va, int key) {
     if (!slot) slot = std::move(built);
 }
 // W2-GA-12: the hull's ground shadow at facing bi (built once per type).
-const ra2engine::VoxelSprite* vxl_shadow(const VehicleAssets& va, int bi) {
+const ra2engine::VoxelSprite* vxl_shadow(const VehicleAssets& va, int bi,int ramp=0) {
     if (!va.vsrc) return nullptr;
     std::lock_guard<std::mutex> lk(g_vxl_mu);
+    if(ramp && bi>=0 && bi<ra2engine::kVehicleFacings) {
+        const std::string key="shadow:r"+std::to_string(ramp)+":"+std::to_string(bi);
+        if(const auto* found=va.animation_sprites.find(key))return found;
+        const auto& m=va.vsrc->hull;const auto& h=va.vsrc->hull_h;
+        const int si=va.shadow_index;
+        if(si>=0 && si<int(m.sections.size()) && !h.frames.empty() && si<int(h.frames[0].size())) {
+            auto one=m;one.sections={m.sections[si]};auto one_h=h;one_h.frames={{h.frames[0][si]}};
+            return &va.animation_sprites.insert(key,ra2engine::rasterize_shadow(one,one_h,
+                ra2engine::index_to_yaw(bi,ra2engine::kVehicleFacings),128,ramp));
+        }
+        return &va.animation_sprites.insert(key,ra2engine::rasterize_shadow(m,h,
+            ra2engine::index_to_yaw(bi,ra2engine::kVehicleFacings),128,ramp));
+    }
     if (!va.shadow) {
         auto v = std::make_shared<std::vector<ra2engine::VoxelSprite>>();
         // W7-12-44 [RE: 0x73A3A0 tail / 0x4144B0 -> FUN_004DAFE0(body,
@@ -3572,7 +3741,7 @@ const ra2engine::VoxelSprite* vxl_shadow(const VehicleAssets& va, int bi) {
         ra2assets::VxlModel one;
         ra2assets::HvaModel one_h;
         const int si = va.shadow_index;
-        if (si > 0 && si < static_cast<int>(m->sections.size()) && !h->frames.empty() &&
+        if (si >= 0 && si < static_cast<int>(m->sections.size()) && !h->frames.empty() &&
             si < static_cast<int>(h->frames[0].size())) {
             one = *m;
             one.sections = {m->sections[static_cast<std::size_t>(si)]};
@@ -3590,40 +3759,43 @@ const ra2engine::VoxelSprite* vxl_shadow(const VehicleAssets& va, int bi) {
 }
 // W3-B: one part at facing `fi`, HVA frame `hf` > 0, in the house colours
 // (rasterised on first use; only multi-frame models ever ask).
-const ra2engine::VoxelSprite& vxl_frame_sprite(const VehicleAssets& va, int part, int house, int fi, int hf) {
-    static std::map<std::string, ra2engine::VoxelSprite> cache;
+const ra2engine::VoxelSprite& vxl_frame_sprite(const VehicleAssets& va, int part, int house, int fi, int hf, int ramp=0) {
+    auto& cache = va.animation_sprites;
     static const ra2engine::VoxelSprite empty;
     if (!va.vsrc) return empty;
     const std::string key = va.combat.image + ":" + std::to_string(part) + ":" +
                             std::to_string(ra2engine::house_draw_key(house)) + ":" + std::to_string(fi) + ":" +
-                            std::to_string(hf);
+                            std::to_string(hf) + ":r" + std::to_string(ramp);
     std::lock_guard<std::mutex> lk(g_vxl_mu);
-    auto it = cache.find(key);
-    if (it != cache.end()) return it->second;
+    if (const auto* hit = cache.find(key)) return *hit;
     const VehicleAssets::VoxelSrc& s = *va.vsrc;
     const ra2assets::VxlModel& m = part == 0 ? s.hull : part == 1 ? s.tur : s.barl;
     const ra2assets::HvaModel& h = part == 0 ? s.hull_h : part == 1 ? s.tur_h : s.barl_h;
     const ra2assets::Palette hp = ra2engine::house_draw_palette(s.pal, house);
-    return cache.emplace(key, ra2engine::rasterize_model(m, h, ra2engine::index_to_yaw(fi, ra2engine::kVehicleFacings),
-                                                         s.vpl, hp, hf)).first->second;
+    static unsigned tilt_notes=0;
+    if(ramp && tilt_notes++<32)
+        ra2engine::diag::note("TERRAIN_TILT image=%s part=%d ramp=%d facing=%d frame=%d",
+            va.combat.image.c_str(),part,ramp,fi,hf);
+    return cache.insert(key, ra2engine::rasterize_model(m, h, ra2engine::index_to_yaw(fi, ra2engine::kVehicleFacings),
+                                                         s.vpl, hp, hf,0.0,ramp));
 }
 // W7-03-05/07: turret model `n` >= 1 at facing `fi` (rasterised on first use).
-const ra2engine::VoxelSprite* vxl_alt_turret(const VehicleAssets& va, int n, int house, int fi, int hf) {
+const ra2engine::VoxelSprite* vxl_alt_turret(const VehicleAssets& va, int n, int house, int fi, int hf, int ramp=0) {
     if (!va.vsrc || n < 1 || n > static_cast<int>(va.vsrc->alt_tur.size())) return nullptr;
-    static std::map<std::string, ra2engine::VoxelSprite> cache;
+    const auto& t = va.vsrc->alt_tur[static_cast<std::size_t>(n - 1)];
+    hf = ra2engine::hva_animation_frame(hf,t.second.frames.size());
+    auto& cache = va.animation_sprites;
     const std::string key = va.combat.image + ":t" + std::to_string(n) + ":" +
                             std::to_string(ra2engine::house_draw_key(house)) + ":" + std::to_string(fi) + ":" +
-                            std::to_string(hf);
+                            std::to_string(hf) + ":r" + std::to_string(ramp);
     std::lock_guard<std::mutex> lk(g_vxl_mu);
-    auto it = cache.find(key);
-    if (it != cache.end()) return &it->second;
+    if (const auto* hit = cache.find(key)) return hit;
     const VehicleAssets::VoxelSrc& s = *va.vsrc;
-    const auto& t = s.alt_tur[static_cast<std::size_t>(n - 1)];
     const ra2assets::Palette hp = ra2engine::house_draw_palette(s.pal, house);
     const int f = t.second.frames.empty() ? 0 : hf % static_cast<int>(t.second.frames.size());
-    return &cache.emplace(key, ra2engine::rasterize_model(t.first, t.second,
+    return &cache.insert(key, ra2engine::rasterize_model(t.first, t.second,
                                                           ra2engine::index_to_yaw(fi, ra2engine::kVehicleFacings),
-                                                          s.vpl, hp, f)).first->second;
+                                                          s.vpl, hp, f,0.0,ramp));
 }
 // The current turret model index of `u`:
 //  * W7-03-07 [RE: TechnoClass::AI 0x6F9380 -- IsChargeTurret (+0x810) and
@@ -3636,6 +3808,8 @@ int pres_turret_index(const ra2engine::Unit& u, const VehicleAssets& va) {
     const std::string id = pres_type_id(u);
     struct TI { bool charge = false; int count = 1; std::map<int, int> by_weapon; };
     static std::map<std::string, TI> cache;
+    static std::uint64_t cache_epoch=0;
+    if(cache_epoch!=g_pres_epoch) { cache.clear();cache_epoch=g_pres_epoch; }
     auto it = cache.find(id);
     if (it == cache.end()) {
         TI t;
@@ -3666,6 +3840,10 @@ int pres_turret_index(const ra2engine::Unit& u, const VehicleAssets& va) {
 }
 void draw_vehicle_unit(SDL_Renderer* ren, ra2engine::TextureCache& tc, const ra2engine::Unit& u,
                        const VehicleAssets& va, const ra2engine::Camera& cam, int W, int H) {
+    {
+        std::lock_guard<std::mutex> lk(g_vxl_mu);
+        va.animation_sprites.begin_frame(tc.instance_id(),tc.frame_id());
+    }
     // W2-AN-07/25: a crashing flier keeps its hull until impact; a sinking
     // ship (ShipSinkingWeight) slides under instead of exploding.
     // W7-12-11: in the live game the sinking hull is the presentation's
@@ -3690,8 +3868,10 @@ void draw_vehicle_unit(SDL_Renderer* ren, ra2engine::TextureCache& tc, const ra2
         return;  // dying vehicle: explosion instead of the tank
     }
 
-    const std::string& img = va.combat.image;
+    const std::string img = va.combat.image+":asset"+std::to_string(va.render_key);
     const int bi = ra2engine::facing_to_index(u.body_facing, ra2engine::kVehicleFacings);
+    const int ramp=pres_unit_ramp(u);
+    const std::string shadow_key="vxlsh:"+img+":"+std::to_string(bi)+":r"+std::to_string(ramp);
 
     // CB-2 Aircraft [RE-GATE APPLIED: aircraft.md §3]: an airborne unit is drawn RAISED
     // by altitude_to_screen_dy, with a ground shadow at the un-raised cell.
@@ -3705,102 +3885,120 @@ void draw_vehicle_unit(SDL_Renderer* ren, ra2engine::TextureCache& tc, const ra2
         : 0;
     if (u.an.t.no_shadow || g_sink_drop_px > 0) {   // W7-12-11: no shadow while sinking
         // W4: NoShadow=yes (V3ROCKET / DMISL) -- no ground shadow at all.
-    } else if (extra_dy > 0 && g_map_dressing && vxl_shadow(va, bi)) {
+    } else if (extra_dy > 0 && g_map_dressing && vxl_shadow(va, bi,ramp)) {
         // W5-PRES [RE: Shadow_Point 0x55A550 / AircraftClass::Draw 0x4144B0 /
         // FUN_00755680]: an airborne voxel casts its own silhouette straight
         // down on the ground, same size at any height (live game).
-        ra2engine::draw_voxel_sprite(ren, tc, "vxlsh:" + img + ":" + std::to_string(bi), *vxl_shadow(va, bi), u.fx,
+        ra2engine::draw_voxel_sprite(ren, tc, shadow_key, *vxl_shadow(va, bi,ramp), u.fx,
                                      u.fy, u.level, cam, W, H, 0);
     } else if (extra_dy > 0)
         ra2engine::draw_ground_shadow(ren, u.fx, u.fy, u.level,
                                       vxl_set(va, 0, u.house).sprites[bi].w, cam, W, H);
-    else if (const ra2engine::VoxelSprite* sh = vxl_shadow(va, bi))
-        ra2engine::draw_voxel_sprite(ren, tc, "vxlsh:" + img + ":" + std::to_string(bi), *sh, u.fx, u.fy,
+    else if (const ra2engine::VoxelSprite* sh = vxl_shadow(va, bi,ramp))
+        ra2engine::draw_voxel_sprite(ren, tc, shadow_key, *sh, u.fx, u.fy,
                                      u.level, cam, W, H, 0);   // W2-GA-12 ground shadow
 
     // W3-B: a multi-frame HVA (Night Hawk / Spy Plane rotors, Kirov
     // propellers) shows frame WalkedFramesSoFar % frames [RE: voxel draw
     // FUN_0073a3a0 reads the walk stage +0x538 modulo the HVA frame count].
-    const int hf = va.hva_frames > 1 ? pres_walk_stage(g_draw_unit_idx) % va.hva_frames : 0;
-    auto part_sprite = [&](int part, int fi) -> const ra2engine::VoxelSprite& {
-        if (hf == 0) return vxl_set(va, part, u.house).sprites[fi];
-        return vxl_frame_sprite(va, part, u.house, fi, hf);
+    const int walk_stage = pres_walk_stage(g_draw_unit_idx);
+    auto part_frame = [&](int part) {
+        if (!va.vsrc) return 0;
+        const auto& h = part == 0 ? va.vsrc->hull_h : part == 1 ? va.vsrc->tur_h : va.vsrc->barl_h;
+        const int clock = part > 0 && u.gattling.enabled() && u.gattling.charge > 0 ?
+            static_cast<int>(g_pres_tick / std::max(1,4-u.gattling.stage(ra2engine::is_elite(u.vet.veterancy)))) : walk_stage;
+        return ra2engine::hva_animation_frame(clock,h.frames.size());
     };
-    const std::string fkey = hf ? ":f" + std::to_string(hf) : std::string();
+    const int hf = part_frame(0), tf = part_frame(1), bf = part_frame(2);
+    auto part_sprite = [&](int part, int fi) -> const ra2engine::VoxelSprite& {
+        const int frame=part_frame(part);
+        if (frame == 0 && ramp==0) return vxl_set(va, part, u.house).sprites[fi];
+        return vxl_frame_sprite(va, part, u.house, fi, frame,ramp);
+    };
+    auto fkey = [&](int frame) { return (frame ? ":f" + std::to_string(frame) : std::string()) +
+        (ramp ? ":r"+std::to_string(ramp) : std::string()); };
     // W4: a RocketLocomotion rocket draws its hull at its pitch (the tilt on
     // the launcher, the climb, the arc, the dive) [FUN_00661D00 +0x50].
     if (u.an.t.missile && va.vsrc && std::fabs(u.an.rocket.pitch) > 1e-3) {
         const int pq = static_cast<int>(std::lround(u.an.rocket.pitch * 180.0 / 3.14159265358979 / 5.0));
         const std::string key = "vxlp:" + img + ":" + std::to_string(ra2engine::house_draw_key(u.house)) + ":" +
                                 std::to_string(bi) + ":" + std::to_string(pq);
-        static std::map<std::string, ra2engine::VoxelSprite> pitched;
-        auto it = pitched.find(key);
-        if (it == pitched.end()) {
-            const VehicleAssets::VoxelSrc& s = *va.vsrc;
-            it = pitched.emplace(key, ra2engine::rasterize_model(
+        auto& pitched=va.animation_sprites;
+        const ra2engine::VoxelSprite* sprite = nullptr;
+        {
+            std::lock_guard<std::mutex> lk(g_vxl_mu);
+            sprite=pitched.find(key);
+            if (!sprite) {
+                const VehicleAssets::VoxelSrc& s = *va.vsrc;
+                sprite = &pitched.insert(key, ra2engine::rasterize_model(
                                           s.hull, s.hull_h, ra2engine::index_to_yaw(bi, ra2engine::kVehicleFacings),
                                           s.vpl, ra2engine::house_draw_palette(s.pal, u.house), 0,
-                                          pq * 5.0 * 3.14159265358979 / 180.0)).first;
+                                          pq * 5.0 * 3.14159265358979 / 180.0));
+            }
         }
-        ra2engine::draw_voxel_sprite(ren, tc, key, it->second, u.fx, u.fy, u.level, cam, W, H, extra_dy);
+        ra2engine::draw_voxel_sprite(ren, tc, key, *sprite, u.fx, u.fy, u.level, cam, W, H, extra_dy);
         return;
     }
     // W7-06-12 / W7-04-27: out of spawns -> the xxxxWO hull [RE-FALLBACK: the
     // draw consumer of NoSpawnAlt was not traced; spawn_ready == 0 = none docked].
     if (va.vsrc && va.vsrc->has_wo && u.an.t.spawns_number > 0 && u.an.spawn_ready == 0) {
-        static std::map<std::string, ra2engine::VoxelSprite> wo_cache;
+        auto& wo_cache=va.animation_sprites;
         const std::string key = "vxl:" + img + ":wo:" + std::to_string(ra2engine::house_draw_key(u.house)) + ":" +
-                                std::to_string(bi);
+                                std::to_string(bi) + fkey(0);
         const ra2engine::VoxelSprite* spr = nullptr;
         {
             std::lock_guard<std::mutex> lk(g_vxl_mu);
-            auto it = wo_cache.find(key);
-            if (it == wo_cache.end())
-                it = wo_cache.emplace(key, ra2engine::rasterize_model(
+            spr = wo_cache.find(key);
+            if (!spr)
+                spr = &wo_cache.insert(key, ra2engine::rasterize_model(
                                                va.vsrc->wo, va.vsrc->wo_h,
                                                ra2engine::index_to_yaw(bi, ra2engine::kVehicleFacings), va.vsrc->vpl,
-                                               ra2engine::house_draw_palette(va.vsrc->pal, u.house), 0)).first;
-            spr = &it->second;
+                                               ra2engine::house_draw_palette(va.vsrc->pal, u.house), 0,0.0,ramp));
         }
         ra2engine::draw_voxel_sprite(ren, tc, key, *spr, u.fx, u.fy, u.level, cam, W, H, extra_dy);
     } else
     ra2engine::draw_voxel_sprite(
-        ren, tc, "vxl:" + img + ":h:" + std::to_string(ra2engine::house_draw_key(u.house)) + ":" + std::to_string(bi) + fkey,
+        ren, tc, "vxl:" + img + ":h:" + std::to_string(ra2engine::house_draw_key(u.house)) + ":" + std::to_string(bi) + fkey(hf),
         part_sprite(0, bi), u.fx, u.fy, u.level, cam, W, H, extra_dy);
     if (va.has_turret) {
-        const int ti = ra2engine::facing_to_index(u.turret_facing, ra2engine::kVehicleFacings);
+        const double visual_facing=ra2engine::spinning_turret_facing(u.turret_facing,g_pres_tick,u.rot_u16_per_sec,va.turret_spins && !u.frozen);
+        const int ti = ra2engine::facing_to_index(visual_facing, ra2engine::kVehicleFacings);
         // W3-B TurretOffset: forward along the BODY facing (FLH axes, §6).
         double tfx = u.fx, tfy = u.fy;
+        int turret_dy=extra_dy;
         if (va.turret_offset != 0) {
             const double yaw = ra2engine::index_to_yaw(bi, ra2engine::kVehicleFacings);
             const double f = va.turret_offset / 256.0;
-            tfx += f * std::cos(yaw);
-            tfy -= f * std::sin(yaw);
+            const auto offset=ra2engine::terrain_tilt(ramp).apply(f*std::cos(yaw),f*std::sin(yaw),0);
+            tfx += offset[0];
+            tfy -= offset[1];
+            turret_dy+=static_cast<int>(std::lround(offset[2]*36.74));
         }
         const int tn = pres_turret_index(u, va);   // W7-03-05/07
-        const ra2engine::VoxelSprite* alt = tn > 0 ? vxl_alt_turret(va, tn, u.house, ti, hf) : nullptr;
+        const ra2engine::VoxelSprite* alt = tn > 0 ? vxl_alt_turret(va, tn, u.house, ti, walk_stage,ramp) : nullptr;
+        const int turret_frame=alt ? ra2engine::hva_animation_frame(walk_stage,va.vsrc->alt_tur[tn-1].second.frames.size()) : tf;
         auto draw_turret = [&]() {
             if (alt)
                 ra2engine::draw_voxel_sprite(ren, tc,
                                              "vxl:" + img + ":t" + std::to_string(tn) + ":" +
                                                  std::to_string(ra2engine::house_draw_key(u.house)) + ":" +
-                                                 std::to_string(ti) + fkey,
-                                             *alt, tfx, tfy, u.level, cam, W, H, extra_dy);
+                                                 std::to_string(ti) + fkey(turret_frame),
+                                             *alt, tfx, tfy, u.level, cam, W, H, turret_dy);
             else
                 ra2engine::draw_voxel_sprite(
-                    ren, tc, "vxl:" + img + ":t:" + std::to_string(ra2engine::house_draw_key(u.house)) + ":" + std::to_string(ti) + fkey,
-                    part_sprite(1, ti), tfx, tfy, u.level, cam, W, H, extra_dy);
+                    ren, tc, "vxl:" + img + ":t:" + std::to_string(ra2engine::house_draw_key(u.house)) + ":" + std::to_string(ti) + fkey(tf),
+                    part_sprite(1, ti), tfx, tfy, u.level, cam, W, H, turret_dy);
         };
         auto draw_barrel = [&]() {
             if (va.has_barrel)
                 ra2engine::draw_voxel_sprite(
-                    ren, tc, "vxl:" + img + ":b:" + std::to_string(ra2engine::house_draw_key(u.house)) + ":" + std::to_string(ti) + fkey,
-                    part_sprite(2, ti), tfx, tfy, u.level, cam, W, H, extra_dy);
+                    ren, tc, "vxl:" + img + ":b:" + std::to_string(ra2engine::house_draw_key(u.house)) + ":" + std::to_string(ti) + fkey(bf),
+                    part_sprite(2, ti), tfx, tfy, u.level, cam, W, H, turret_dy);
         };
         // W7-12-41 [RE: 0x73A3A0 @0x73ACBB-0x73ADD4 -- q = ((turret facing
         // >> 13) + 1 >> 1) & 3; q 0 (N) or 3 (W) draws the barrel BEFORE the
         // turret, else after].
-        const int q = (((static_cast<int>(u.turret_facing) & 0xFFFF) >> 13) + 1 >> 1) & 3;
+        const int q = ((((static_cast<int>(visual_facing) & 0xFFFF) >> 13) + 1) >> 1) & 3;
         if (q == 0 || q == 3) {
             draw_barrel();
             draw_turret();
@@ -4086,7 +4284,12 @@ bool pres_draw_projectile(SDL_Renderer* ren, ra2engine::TextureCache& tc,
 void draw_projectiles(SDL_Renderer* ren, const ra2engine::World& world,
                       const ra2assets::MapFile& map, const ra2engine::Camera& cam, int W, int H,
                       ra2engine::TextureCache* tc = nullptr) {
-    for (const ra2engine::Projectile& p : world.projectiles()) {
+    std::size_t projectile_index=0;
+    for (const ra2engine::Projectile& authoritative : world.projectiles()) {
+        auto p=authoritative; // draw copy only: simulation and impact timing stay intact
+        const auto xyz=g_projectile_motion.sample(projectile_index++,p,g_pres_render_fraction);
+        p.x=static_cast<int>(std::lround(xyz[0]));p.y=static_cast<int>(std::lround(xyz[1]));
+        p.z=static_cast<int>(std::lround(xyz[2]));
         const double x = p.x / 256.0, y = p.y / 256.0;
         const ra2assets::MapCell* mc =
             map.at(ra2engine::lepton_to_cell(p.x), ra2engine::lepton_to_cell(p.y));
@@ -4096,7 +4299,9 @@ void draw_projectiles(SDL_Renderer* ren, const ra2engine::World& world,
         const int level = mc ? mc->level : 0;
         const int gx = static_cast<int>(std::lround((x - y) * 30.0)) + cam.x + 30;
         const int gy = static_cast<int>(std::lround((x + y) * 15.0 - level * 15)) + cam.y + 15;
-        const int sy = gy - static_cast<int>(std::lround((p.z / 256.0) * 36.74));
+        // World's bullet Z is relative to local terrain (unit_lz and the
+        // detonation pass use the same convention). Keep the ground anchor.
+        const int sy = ra2engine::projectile_screen_y(gy,p.z);
         if (gx < -8 || gx > W + 8 || sy > H + 8 || gy < -8) continue;
         // W4: the FIRING weapon's art (slot / base defence / voxel bullet).
         if (tc && g_fx3 && g_fx3->draw_projectile(ren, *tc, world, p, gx, sy, gy, W, H)) continue;
@@ -4116,6 +4321,31 @@ void draw_projectiles(SDL_Renderer* ren, const ra2engine::World& world,
         else
             SDL_SetRenderDrawColor(ren, 255, 240, 170, 255);
         SDL_RenderFillRect(ren, &shell);
+    }
+    // Nuclear strikes live outside World::projectiles(). Render their actual
+    // carrier/payload art from the authoritative strike clock; no new damage.
+    if(tc && g_fx3) for(const auto& strike:world.sw_strikes()) {
+        if(strike.kind!=1 || strike.done)continue;
+        const auto& timing=world.sw_params();
+        const double tick=strike.frame+g_pres_render_fraction;
+        const bool falling=tick>=timing.nuke_up_frames;
+        const int x=falling?strike.x:strike.ox,y=falling?strike.y:strike.oy;
+        if(!world.object_visible_at(g_local_house,x,y))continue;
+        ra2engine::Projectile missile;
+        missile.weapon_id=falling?"NukePayload":"NukeCarrier";
+        missile.kind=ra2engine::ProjKind::Vertical;
+        missile.x=x*256;missile.y=y*256;
+        missile.z=static_cast<int>(std::lround(ra2engine::nuke_visual_height(tick,
+            timing.nuke_up_frames,timing.nuke_down_frames)));
+        missile.vz=falling?-100.0:std::max(1.0,tick+1.0);
+        const int ground=(x+y)*15-world.cell_level(x,y)*15+cam.y+15;
+        const int sx=(x-y)*30+cam.x+30;
+        const int sy=ra2engine::projectile_screen_y(ground,missile.z);
+        if(!g_fx3->draw_projectile(ren,*tc,world,missile,sx,sy,ground,W,H)) {
+            static std::set<std::string> missing;
+            if(missing.insert(missile.weapon_id).second)
+                ra2engine::diag::note("NUKE_VISUAL missing weapon=%s",missile.weapon_id.c_str());
+        }
     }
 }
 
@@ -4173,7 +4403,7 @@ int shp_vehicle_frame(const ShpVehicleArt& s, const ra2engine::Unit& u, int coun
     int f;
     if (u.fire_flash > 0 && s.fire > 0)
         f = s.fire * fg + s.start_fire + static_cast<int>((t / 2) % s.fire);
-    else if (u.moving() || pres_idle_rate(u.image) > 0)
+    else if (u.moving() || pres_idle_rate(pres_type_id(u)) > 0)
         f = stage % std::max(1, s.walk) + s.walk * fg + s.start_walk;
     else if (s.stand)
         f = s.stand * fg + s.start_stand;
@@ -4195,6 +4425,20 @@ void render_world(SDL_Renderer* ren, ra2engine::TextureCache& tc, Assets& a,
     ra2engine::set_color_world(&world);   // G-16: house colours for every sprite draw
     g_pres_assets = &a;                   // W5-PRES: ramp lookups (ore slopes)
     tc.next_frame();                      // W2-GA-P5: LRU clock (evicts only over budget)
+    if(vlist && ra2engine::diag::state().enabled.load()) {
+        static long cache_tick=-150;
+        if(g_pres_tick<cache_tick || g_pres_tick-cache_tick>=150) {
+            std::size_t bytes=0,variants=0,evicted=0;
+            for(const auto* asset:*vlist) if(asset) {
+                bytes+=asset->animation_sprites.bytes();variants+=asset->animation_sprites.size();
+                evicted+=asset->animation_sprites.evicted();
+            }
+            ra2engine::diag::note("VOXEL_CACHE cpu_estimated_bytes=%llu variants=%llu evicted=%llu assets=%llu",
+                static_cast<unsigned long long>(bytes),static_cast<unsigned long long>(variants),
+                static_cast<unsigned long long>(evicted),static_cast<unsigned long long>(vlist->size()));
+            cache_tick=g_pres_tick;
+        }
+    }
     // W2-GA-02: never-explored cells are not drawn at all (their cliff/slope
     // extras no longer leak through the shroud); the SHROUD.SHP post-pass
     // (draw_shroud_pass below) softens the edges over every object.
@@ -4230,21 +4474,97 @@ void render_world(SDL_Renderer* ren, ra2engine::TextureCache& tc, Assets& a,
             ra2engine::draw_path(ren, u, cam, W, H);   // carried units draw nothing
         // W2-UI-11: in the real game the selection marker IS the pip board
         // (drawn with the bars below); other render paths keep the diamond.
-        if (usel(u) && !(input && g_pips)) ra2engine::draw_selection(ren, u, cam, W, H, veh_width(u));
+        if (usel(u) && !(input && g_pips)) {
+            auto marker_cam=cam;marker_cam.y+=int(std::lround((u.level-pres_ground_level(world,u))*15.0));
+            ra2engine::draw_selection(ren,u,marker_cam,W,H,veh_width(u));
+        }
     }
     // Sprites back-to-front so nearer units overlap farther ones. Vehicles
     // (an image with a VehicleAssets entry) draw via voxel sprites; otherwise
     // pick the SHP by the unit's own image ("GI"/"CONS"). An unrecognized
     // image is logged and skipped (not thrown) so one bad unit can't take
     // down the whole frame.
-    auto draw_one_unit = [&](int idx) {
+    auto bunker_render_host = [&](int idx) {
+        const auto& u=us[idx];
+        const int bi=u.garrison_of>=0?u.garrison_of:u.bunker_exit_host>=0?u.bunker_exit_host:u.occupy_target;
+        if(!ba || bi<0 || bi>=int(world.buildings().size()))return -1;
+        const auto& b=world.buildings()[bi];
+        if(!b.alive || b.state!=ra2engine::Building::State::Idle || b.type<0 || b.type>=int(ba->roster.size()) ||
+           !ba->roster[b.type].tank_bunker)return -1;
+        return u.garrison_of>=0 || ra2engine::bunker_contains_vehicle(u.fx,u.fy,b.cx,b.cy,b.fw,b.fh)?bi:-1;
+    };
+    auto draw_one_unit = [&](int idx, const ra2engine::Building* bunker = nullptr) {
+        if(!bunker && bunker_render_host(idx)>=0)return;
+        auto unit_cam=cam;
+        const auto& cam=unit_cam;
+        const auto exiting=g_bunker_motion.find(idx);
+        if (!bunker && exiting!=g_bunker_motion.end() && !exiting->second.entering &&
+            ra2engine::transition_active(exiting->second.start,exiting->second.duration,g_pres_tick)) {
+            const int bi=exiting->second.building;
+            if (bi>=0 && bi<static_cast<int>(world.buildings().size()) && world.buildings()[bi].alive &&
+                world.buildings()[bi].state==ra2engine::Building::State::Idle) return;
+        }
+        const auto packing=g_slave_miner_pack_fx.find(idx);
+        if(!bunker && packing!=g_slave_miner_pack_fx.end() &&
+            ra2engine::transition_active(packing->second.start,packing->second.duration,g_pres_tick)) return;
         // W5-PRES R-100: a unit on a high-bridge deck draws BridgeHeight up.
         std::optional<ra2engine::Unit> lifted;
         const ra2engine::Unit* up = &us[idx];
-        if (const int lv = pres_unit_lift_levels(world, *up)) {
+        if(up->garrison_of<0 && g_unit_motion.moving(idx,*up)) {
             lifted.emplace(*up);
+            g_unit_motion.apply(idx,*lifted,g_pres_render_fraction);
+            up=&*lifted;
+        }
+        if(!bunker && !up->is_aircraft && !up->is_naval) {
+            const double drawn=up->level+pres_unit_lift_levels(world,*up);
+            const double ground=g_unit_motion.ground_level(idx,us[idx],pres_ground_level(world,*up),g_pres_render_fraction);
+            unit_cam.y+=int(std::lround((drawn-ground)*15.0));
+        }
+        if (const int lv = pres_unit_lift_levels(world, *up)) {
+            if(!lifted) lifted.emplace(*up);
             lifted->level += lv;
             up = &*lifted;
+        }
+        if (bunker && us[idx].garrison_of>=0) {
+            if (!lifted) lifted.emplace(*up);
+            const auto dock=ra2engine::bunker_docking_cell(bunker->cx,bunker->cy,bunker->fw,bunker->fh);
+            lifted->fx=dock[0];lifted->fy=dock[1];
+            lifted->cell_x=bunker->cx;
+            lifted->cell_y=bunker->cy;
+            lifted->level=world.cell_level(bunker->cx,bunker->cy);
+            lifted->on_deck=false;
+            lifted->sub_x=lifted->sub_y=0;
+            lifted->cargo_of=-1;
+            lifted->fire_flash=bunker->def_fire_flash;
+            lifted->target=bunker->garrison_target;
+            lifted->target_building=bunker->w7.garrison_target_building;
+            lifted->body_facing=ra2engine::bunker_horizontal_facing(lifted->body_facing);
+            up=&*lifted;
+        }
+        auto motion=g_bunker_motion.find(idx);
+        if(motion!=g_bunker_motion.end()) {
+            const long age=g_pres_tick-motion->second.start;
+            if(age<0 || age>=motion->second.duration || !up->alive) g_bunker_motion.erase(motion);
+            else {
+                if(!lifted) lifted.emplace(*up);
+                const double f=ra2engine::bunker_drive_fraction(age,motion->second.drive,motion->second.delay,g_pres_render_fraction);
+                // Exiting units may already be following a new command. Blend
+                // toward their current position, not a stale ejection cell.
+                const double tx=motion->second.entering?motion->second.to_x:us[idx].fx;
+                const double ty=motion->second.entering?motion->second.to_y:us[idx].fy;
+                lifted->fx=motion->second.from_x+(tx-motion->second.from_x)*f;
+                lifted->fy=motion->second.from_y+(ty-motion->second.from_y)*f;
+                if(motion->second.entering)
+                    lifted->body_facing=ra2engine::bunker_hull_facing(motion->second.hull_from,motion->second.hull_to,
+                        age,motion->second.drive,motion->second.align,g_pres_render_fraction);
+                lifted->sub_x=lifted->sub_y=0;
+                up=&*lifted;
+            }
+        }
+        if(bunker) {
+            if(!lifted)lifted.emplace(*up);
+            const double offset=ra2engine::bunker_platform_offset(lifted->fx,lifted->fy,bunker->cx,bunker->cy,bunker->fw,bunker->fh);
+            lifted->fx+=offset;lifted->fy+=offset;up=&*lifted;
         }
         const ra2engine::Unit& u = *up;
         // W5-PRES R-120: Iron Curtain / elite flash / chrono warp draw tint.
@@ -4269,7 +4589,7 @@ void render_world(SDL_Renderer* ren, ra2engine::TextureCache& tc, Assets& a,
         // is pixel-identical. Own units (u.house == 0) are always drawn.
         if (u.house != g_local_house && !world.object_visible_at(g_local_house, u.cell_x, u.cell_y)) return;
         // W2-AN-13: a submerged enemy sub without our sonar contact is unseen.
-        if (world.unit_hidden_from(0, u)) return;
+        if (world.unit_hidden_from(g_local_house, u)) return;
         if (u.ia.vanish) return;   // W3-B: a death anim replaced the body
         if (u.die_time >= 0.0 && pres_crushed(idx)) return;   // W7-04-25: crushed -> removed at once
         // W5-PRES R-047 [RE: abilities-w5.md §9]: an enemy viewer sees a still
@@ -4314,12 +4634,17 @@ void render_world(SDL_Renderer* ren, ra2engine::TextureCache& tc, Assets& a,
             va_found = od->second.get();
         }
         if (const VehicleAssets* va = va_found) {
+            std::shared_ptr<const VehicleAssets> unload_hold;
             g_draw_unit_idx = idx;   // W3-B: walk stage (HVA frame)
             // W3-B [RE: FUN_0073c1cc, Harvester=yes + unloading -> UnloadingClass]:
             // a harvester dumping at the refinery draws its UnloadingClass.
             if (u.is_harvester && u.harv == ra2engine::HarvState::Unloading) {
-                auto ul = g_unloading_class.find(draw_image);
-                if (ul != g_unloading_class.end() && ul->second) va = ul->second;
+                {
+                    std::lock_guard<std::mutex> lock(g_unloading_class_mu);
+                    auto ul = g_unloading_class.find(draw_image);
+                    if (ul != g_unloading_class.end()) unload_hold = ul->second;
+                }
+                if (unload_hold) va = unload_hold.get();
             }
             draw_vehicle_unit(ren, tc, u, *va, cam, W, H);
             return;
@@ -4339,8 +4664,12 @@ void render_world(SDL_Renderer* ren, ra2engine::TextureCache& tc, Assets& a,
             }
         }
         if (it == ua.shps.end()) {
-            std::cerr << "[render] no SHP loaded for image=" << draw_image << " (unit " << idx
-                      << "); skipping\n";
+            // Repeating this at frame rate flushed the same error to disk for
+            // every affected unit. One record per image retains the cause.
+            static std::set<std::string> missing_images;
+            if (missing_images.insert(draw_image).second)
+                std::cerr << "[render] no SHP loaded for image=" << draw_image << " (first unit " << idx
+                          << "); skipping; further occurrences suppressed\n";
             return;
         }
         auto sv = g_shp_vehicles.find(draw_image);
@@ -4359,7 +4688,7 @@ void render_world(SDL_Renderer* ren, ra2engine::TextureCache& tc, Assets& a,
     // keys tie). With no BuildingAssets (or no buildings) this is exactly the
     // old unit-only pass -- the byte-identity-gated demos spawn no buildings.
     const std::vector<int> uorder = ra2engine::unit_draw_order(us);
-    struct DrawItem { double key; int kind; int idx; };  // kind 0=building, 1=unit
+    struct DrawItem { double key; int kind; int idx; };  // 0=building, 1=unit, 4=pack animation
     std::vector<DrawItem> merged;
     if (ba) {
         const std::vector<ra2engine::Building>& bs = world.buildings();
@@ -4404,7 +4733,26 @@ void render_world(SDL_Renderer* ren, ra2engine::TextureCache& tc, Assets& a,
         // W5-PRES R-100/R-101: on-deck units sort after their deck; airborne
         // units leave the ground sort for the air layer (drawn below).
         for (int i : uorder)
-            if (!(g_map_dressing && pres_airborne(us[i]))) B.push_back({pres_unit_key(world, us[i]), 1, i});
+            if (!(g_map_dressing && pres_airborne(us[i]))) {
+                const auto xy=g_unit_motion.position(i,us[i],g_pres_render_fraction);
+                B.push_back({ra2engine::deck_unit_depth(xy[0],xy[1],us[i].cell_x,us[i].cell_y,
+                    pres_on_high_deck(world,us[i])),1,i});
+            }
+        for (auto it = g_slave_miner_pack_fx.begin(); it != g_slave_miner_pack_fx.end();) {
+            const SlaveMinerPackFx& fx = it->second;
+            // A move/deploy/death supersedes this visual-only transition. Do
+            // not hide a moving live unit behind a ghost at its old foundation.
+            const bool present=it->first>=0 && it->first<static_cast<int>(us.size()) &&
+                us[it->first].alive && us[it->first].die_time<0 && !us[it->first].moving() &&
+                us[it->first].cell_x==fx.cx && us[it->first].cell_y==fx.cy;
+            if (!present || g_pres_tick < fx.start || g_pres_tick - fx.start >= fx.duration) {
+                it = g_slave_miner_pack_fx.erase(it);
+                continue;
+            }
+            if (fx.house == g_local_house || world.object_visible_at(g_local_house, fx.cx, fx.cy))
+                B.push_back({fx.sort_key, 4, it->first});
+            ++it;
+        }
         std::stable_sort(B.begin(), B.end(), [](const DrawItem& x, const DrawItem& y) { return x.key < y.key; });
         merged.resize(A.size() + B.size());
         std::merge(A.begin(), A.end(), B.begin(), B.end(), merged.begin(),
@@ -4428,6 +4776,50 @@ void render_world(SDL_Renderer* ren, ra2engine::TextureCache& tc, Assets& a,
                 g_turrets->draw(ren, tc, world, b, ba->roster[static_cast<std::size_t>(b.type)].id,
                                 mc ? mc->level : 0, cam, W, H);
             ra2engine::set_obj_tint(nullptr);
+            const bool tank_bunker = b.alive && b.state == ra2engine::Building::State::Idle &&
+                b.type >= 0 && b.type < static_cast<int>(ba->roster.size()) &&
+                ba->roster[static_cast<std::size_t>(b.type)].tank_bunker;
+            if (tank_bunker) {
+                const auto& def = ba->roster[static_cast<std::size_t>(b.type)];
+                const std::string& image = def.image.empty() ? def.id : def.image;
+                const ra2assets::Palette pal = ra2engine::house_draw_palette(ba->unit_pal, b.house);
+                const ra2engine::ScreenPt dp = ra2engine::building_draw_point(b.cx, b.cy, mc ? mc->level : 0);
+                const int cx = dp.x + cam.x, cy = dp.y + cam.y;
+                const int ckey = ra2engine::house_draw_key(b.house);
+                pres_tank_bunker_overlay(ren, tc, b, image, cx, cy, ba->condition_yellow,
+                                         pal, ckey, W, H, false);
+                for (int ui : b.occupants)
+                    if (ui>=0 && ui<static_cast<int>(us.size()) && us[ui].alive)
+                        draw_one_unit(ui,&b);
+                // Approaching and physically departing vehicles must use the
+                // same rear/vehicle/front pass while crossing the foundation.
+                for(int ui=0;ui<int(us.size());++ui)
+                    if(us[ui].alive && us[ui].garrison_of<0 && bunker_render_host(ui)==d.idx &&
+                       !ra2engine::bunker_vehicle_in_front(us[ui].fx,us[ui].fy,b.cx,b.cy,b.fw,b.fh))
+                        draw_one_unit(ui,&b);
+                // Keep an exiting tank in the same rear/tank/front layering
+                // until it clears the bunker instead of popping in front.
+                std::vector<int> exiting_units;
+                for (const auto& motion:g_bunker_motion)
+                    if (!motion.second.entering && motion.second.building==d.idx &&
+                        ra2engine::transition_active(motion.second.start,motion.second.duration,g_pres_tick))
+                        exiting_units.push_back(motion.first);
+                for (int ui:exiting_units)
+                    if(ui>=0 && ui<static_cast<int>(us.size()) && us[ui].alive && us[ui].garrison_of<0)
+                        draw_one_unit(ui,&b);
+                pres_tank_bunker_overlay(ren, tc, b, image, cx, cy, ba->condition_yellow,
+                                         pal, ckey, W, H, true);
+                // Once the moving body crosses the platform's front half it
+                // must occlude the lowered lip, rather than pass beneath it.
+                for(int ui=0;ui<int(us.size());++ui)
+                    if(us[ui].alive && us[ui].garrison_of<0 && bunker_render_host(ui)==d.idx &&
+                       ra2engine::bunker_vehicle_in_front(us[ui].fx,us[ui].fy,b.cx,b.cy,b.fw,b.fh))
+                        draw_one_unit(ui,&b);
+            }
+        } else if (d.kind == 4) {
+            const auto fx = g_slave_miner_pack_fx.find(d.idx);
+            if (fx != g_slave_miner_pack_fx.end())
+                draw_slave_miner_pack_fx(ren, tc, fx->second, *ba, cam, W, H);
         } else {
             draw_one_unit(d.idx);
         }
@@ -4536,7 +4928,7 @@ void render_world(SDL_Renderer* ren, ra2engine::TextureCache& tc, Assets& a,
                 const int up = (u.is_aircraft && u.altitude > 0.0) ? ra2engine::altitude_to_screen_dy(u.altitude) : 0;
                 const double ufx = u.fx + u.sub_x / 256.0, ufy = u.fy + u.sub_y / 256.0;   // W5-B
                 const int sx = static_cast<int>(std::lround((ufx - ufy) * 30.0)) + cam.x + 30;
-                const int lv = u.level + pres_unit_lift_levels(world, u);   // W5-PRES R-100 deck
+                const double lv = (u.is_aircraft || u.is_naval) ? u.level+pres_unit_lift_levels(world,u) : pres_ground_level(world,u);
                 const int sy = static_cast<int>(std::lround((ufx + ufy) * 15.0 - lv * 15)) + cam.y + 15 - up;
                 draw_unit_pips(ren, tc, u, sx, sy, g_pip_yellow, g_pip_red, usel(u));
                 // W7-12-04/05/16/17/18/22 [RE: DrawHealthBar 0x6F5A00 tail]: the
@@ -4599,7 +4991,7 @@ void draw_sidebar(SDL_Renderer* ren, ra2engine::TextureCache& tc, const Building
                   const ra2engine::SidebarLayout& lay, const ra2engine::ProductionState& ps,
                   const ra2engine::World& world, int credits_shown, double t_now, int active_tab,
                   const UnitRoster* ur = nullptr, bool unit_factory_alive = true,
-                  int armed_mode = 0);   // 0 none, 1 repair, 2 sell [repair-sell.md §C1]
+                  int armed_mode = 0, bool powers_in_strip = false);   // 0 none, 1 repair, 2 sell
 
 int run_screenshot(const std::string& out_path) {
     const int W = 1280, H = 720;
@@ -5085,7 +5477,11 @@ ra2assets::Palette make_font_palette() {
                                static_cast<uint8_t>(lvl * 92 / 100),
                                static_cast<uint8_t>(lvl * 55 / 100), 255};
     }
-    p[0] = ra2assets::Rgba{0, 0, 0, 0};        // (never used: idx 0 = transparent)
+    // Metallic glyphs use 1 for the face, 2 for the upper bevel, 3 for shadow.
+    p[1] = ra2assets::Rgba{255, 255, 0, 255};
+    p[2] = ra2assets::Rgba{255, 245, 170, 255};
+    p[3] = ra2assets::Rgba{70, 35, 0, 255};
+    p[0] = ra2assets::Rgba{0, 0, 0, 0};
     return p;
 }
 
@@ -5103,6 +5499,9 @@ ra2assets::Palette make_font_palette_tinted(int r, int g, int b) {
                                static_cast<uint8_t>(g * lvl / 255),
                                static_cast<uint8_t>(b * lvl / 255), 255};
     }
+    p[1] = ra2assets::Rgba{static_cast<uint8_t>(r), static_cast<uint8_t>(g), static_cast<uint8_t>(b), 255};
+    p[2] = ra2assets::Rgba{static_cast<uint8_t>(r+(255-r)/3), static_cast<uint8_t>(g+(255-g)/3), static_cast<uint8_t>(b+(255-b)/3), 255};
+    p[3] = ra2assets::Rgba{static_cast<uint8_t>(r/4), static_cast<uint8_t>(g/4), static_cast<uint8_t>(b/4), 255};
     p[0] = ra2assets::Rgba{0, 0, 0, 0};
     return p;
 }
@@ -5166,7 +5565,7 @@ int fnt_text_width(const ra2assets::Font& font, const std::string& s_in) {
     const std::string& s = s_in;
 #endif
     int w = 0;
-    for (unsigned char ch : s) {
+    for (uint32_t ch : ra2assets::UFont::decode_utf8(s)) {
         const int cw = font.width(ch);
         w += (cw > 0 ? cw : font.height() / 2);
     }
@@ -5187,7 +5586,7 @@ void draw_fnt_text(SDL_Renderer* ren, ra2engine::TextureCache& tc, const ra2asse
     const std::string& s = s_in;
 #endif
     int cx = x;
-    for (unsigned char ch : s) {
+    for (uint32_t ch : ra2assets::UFont::decode_utf8(s)) {
         const int w = font.width(ch);
         if (ch != ' ' && ch >= font.first() && ch <= font.last() && w > 0) {
             const ra2assets::FntGlyph& g = font.glyph(ch);
@@ -5203,6 +5602,13 @@ void draw_fnt_text(SDL_Renderer* ren, ra2engine::TextureCache& tc, const ra2asse
                 SDL_RenderCopyF(ren, tex, nullptr, &dst);
 #else
                 SDL_Rect dst{cx, y, g.w * scale, g.h * scale};
+                SDL_SetTextureScaleMode(tex,SDL_ScaleModeNearest);
+                if(font.last()>255) {
+                    SDL_SetTextureColorMod(tex,0,0,0);
+                    SDL_Rect shadow=dst;shadow.x+=1;shadow.y+=1;
+                    SDL_RenderCopy(ren,tex,nullptr,&shadow);
+                    SDL_SetTextureColorMod(tex,255,255,255);
+                }
                 SDL_RenderCopy(ren, tex, nullptr, &dst);
 #endif
             }
@@ -5229,7 +5635,7 @@ void draw_fnt_text_f(SDL_Renderer* ren, ra2engine::TextureCache& tc, const ra2as
     }
 #endif
     double cx = x;
-    for (unsigned char ch : s) {
+    for (uint32_t ch : ra2assets::UFont::decode_utf8(s)) {
         const int w = font.width(ch);
         if (ch != ' ' && ch >= font.first() && ch <= font.last() && w > 0) {
             const ra2assets::FntGlyph& g = font.glyph(ch);
@@ -5247,6 +5653,13 @@ void draw_fnt_text_f(SDL_Renderer* ren, ra2engine::TextureCache& tc, const ra2as
                 const int x1 = static_cast<int>(std::lround(cx + g.w * scale));
                 SDL_Rect dst{x0, static_cast<int>(std::lround(y)), x1 - x0,
                              static_cast<int>(std::lround(g.h * scale))};
+                SDL_SetTextureScaleMode(tex,SDL_ScaleModeNearest);
+                if(font.last()>255) {
+                    SDL_SetTextureColorMod(tex,0,0,0);
+                    SDL_Rect shadow=dst;shadow.x+=1;shadow.y+=1;
+                    SDL_RenderCopy(ren,tex,nullptr,&shadow);
+                    SDL_SetTextureColorMod(tex,255,255,255);
+                }
                 SDL_RenderCopy(ren, tex, nullptr, &dst);
 #endif
             }
@@ -5279,14 +5692,17 @@ ra2engine::SbRect sw_slot_rect(const ra2engine::SidebarLayout& lay, int k) {
 }
 
 void draw_sw_slot(SDL_Renderer* ren, ra2engine::TextureCache& tc, const BuildingAssets& ba,
-                  const ra2engine::World& world, const ra2engine::SbRect& slot0, double t_now) {
+                  const ra2engine::World& world, const ra2engine::SbRect& slot0, double t_now,
+                  ra2engine::SuperweaponType only=ra2engine::SuperweaponType::None) {
     const std::vector<ra2engine::SuperweaponType> types = world.sw_types(g_local_house);
     for (int k = 0; k < static_cast<int>(types.size()); ++k) {
     const ra2engine::SuperweaponType ty = types[k];
+    if(only!=ra2engine::SuperweaponType::None && ty!=only) continue;
     const ra2engine::Superweapon* sw = world.sw_state(g_local_house, ty);
     if (!sw) continue;
-    const ra2engine::SbRect slot{slot0.x + (k % 2) * ra2engine::kCameoW,
-                                 slot0.y + (k / 2) * ra2engine::kCameoH, slot0.w, slot0.h};
+    const int offset=only==ra2engine::SuperweaponType::None ? k : 0;
+    const ra2engine::SbRect slot{slot0.x + (offset % 2) * ra2engine::kCameoW,
+                                 slot0.y + (offset / 2) * ra2engine::kCameoH, slot0.w, slot0.h};
     // Cameo (art-guarded): the SW's SidebarImage, else a placeholder shade.
     auto cam = ba.sw_cameos.find(static_cast<int>(ty));
     if (cam != ba.sw_cameos.end())
@@ -5390,7 +5806,7 @@ void draw_radar_minimap(SDL_Renderer* ren, const ra2engine::SbRect& radar_rect,
 void draw_sidebar(SDL_Renderer* ren, ra2engine::TextureCache& tc, const BuildingAssets& ba,
                   const ra2engine::SidebarLayout& lay, const ra2engine::ProductionState& ps,
                   const ra2engine::World& world, int credits_shown, double t_now, int active_tab,
-                  const UnitRoster* ur, bool unit_factory_alive, int armed_mode) {
+                  const UnitRoster* ur, bool unit_factory_alive, int armed_mode, bool powers_in_strip) {
     // Opaque backdrop behind any gaps (missing optional chrome), then the
     // recovered top-to-bottom stack.
     shade_rect(ren, lay.bar, 255, 24, 24, 28);
@@ -5548,6 +5964,10 @@ void draw_sidebar(SDL_Renderer* ren, ra2engine::TextureCache& tc, const Building
     const bool unit_tab = (active_tab >= 2 && ur);
     for (const ra2engine::CameoCell& c : lay.cameos) {
         const int type = c.type;
+        if(active_tab==1 && ra2engine::power_cameo_type(type)!=ra2engine::SuperweaponType::None) {
+            draw_sw_slot(ren,tc,ba,world,c.rect,t_now,ra2engine::power_cameo_type(type));
+            continue;
+        }
         if (unit_tab) {
             if (type < 0 || type >= static_cast<int>(ur->defs.size())) continue;
             if (type < static_cast<int>(ur->has_cameo.size()) && ur->has_cameo[type])
@@ -5559,6 +5979,15 @@ void draw_sidebar(SDL_Renderer* ren, ra2engine::TextureCache& tc, const Building
                 blit_shp(ren, tc, "cam:" + ba.roster[type].id, ba.art[type].cameo, 0, ba.cameo_pal,
                          c.rect.x, c.rect.y);
         }
+        const bool picture = unit_tab ? (type < static_cast<int>(ur->has_cameo.size()) && ur->has_cameo[type]) : ba.art[type].has_cameo;
+        if (!picture) {
+            const SDL_Rect missing_rect{c.rect.x,c.rect.y,c.rect.w,c.rect.h};
+            SDL_SetRenderDrawColor(ren,35,43,40,255); SDL_RenderFillRect(ren,&missing_rect);
+            SDL_SetRenderDrawColor(ren,120,100,70,255); SDL_RenderDrawRect(ren,&missing_rect);
+            const std::string tag = (unit_tab ? ur->defs[type].id : ba.roster[type].id).substr(0,8);
+            draw_text(ren,tag,c.rect.x+3,c.rect.y+8,1,220,205,170);
+            draw_text(ren,"NO ART",c.rect.x+3,c.rect.y+25,1,160,155,130);
+        }
         // CB-5 [RE: techtree.md §1]: unit tabs now compute buildability too (was
         // building-tabs-only). Unit cameo availability reuses can_start_unit
         // against the SAME predicate; building cameos keep can_start. Render-only;
@@ -5566,10 +5995,10 @@ void draw_sidebar(SDL_Renderer* ren, ra2engine::TextureCache& tc, const Building
         bool can;
         if (unit_tab)
             can = ra2engine::can_start_unit(ps, type, ur->defs, world.buildings(), ba.roster, 0,
-                                            ba.groups, unit_factory_alive);
+                                            ba.groups, unit_factory_alive, &world.units());
         else
             can = ra2engine::can_start(ps, type, ba.roster, world.buildings(), 0, ba.groups,
-                                       conyard_alive(world, ba, g_local_house));
+                                       conyard_alive(world, ba, g_local_house), &world.units());
         // W2-UI-02/05 [RE: wave2/04 #2, FUN_0067F800]: DARKEN.SHP (0x401) when
         // the item cannot be built; while in production GCLOCK2 frame stage+1
         // TRANSLUCENT (0x404 = 50 %) with no shade under it; a ready item shows
@@ -5599,7 +6028,7 @@ void draw_sidebar(SDL_Renderer* ren, ra2engine::TextureCache& tc, const Building
     // granted SW, so no existing demo (which grants none) changes its sidebar.
     const ra2engine::SbRect sw_slot{lay.bar.x + ra2engine::kCameoX, lay.radar.y + 2,
                                     ra2engine::kCameoW, ra2engine::kCameoH};
-    draw_sw_slot(ren, tc, ba, world, sw_slot, t_now);
+    if(!powers_in_strip) draw_sw_slot(ren, tc, ba, world, sw_slot, t_now);
 }
 
 // Placement cursor: draw the fw*fh foundation cell diamonds green (cell OK) /
@@ -5778,7 +6207,8 @@ void draw_production_chrome(SDL_Renderer* ren, const ra2engine::World& world,
 ra2engine::World launch_skirmish(const ra2engine::SkirmishConfig& cfg,
                                  Assets& a, UnitAssets& ua, BuildingAssets& ba,
                                  const Rules& rules, const Ini* gf_rules_ini = nullptr,
-                                 std::vector<std::string>* gf_spawned = nullptr);
+                                 std::vector<std::string>* gf_spawned = nullptr,
+                                 const Art* gf_art = nullptr);
 
 // ============================================================================
 // [P8 Options + persistence, RE: docs/re/options.md] The user's RA2.INI.
@@ -5788,6 +6218,17 @@ ra2engine::World launch_skirmish(const ra2engine::SkirmishConfig& cfg,
 // constructs GameScene or reads the settings file, and --menu-shot renders with
 // built-in defaults -- so the byte-identity gates cannot see a user's settings.
 ra2engine::Settings* g_user_settings = nullptr;
+bool user_canvas_size(int& w,int& h) {
+#ifdef __ANDROID__
+    if (g_user_settings && g_user_settings->screen_width>=640 && g_user_settings->screen_width<=1920 &&
+        g_user_settings->screen_height>=480 && g_user_settings->screen_height<=1080) {
+        w=g_user_settings->screen_width;h=g_user_settings->screen_height;return true;
+    }
+#endif
+    return false;
+}
+int menu_canvas_width() {int w=1280,h=720;user_canvas_size(w,h);return w;}
+int menu_canvas_height() {int w=1280,h=720;user_canvas_size(w,h);return h;}
 bool pres_target_lines() { return g_user_settings ? g_user_settings->unit_action_lines : true; }
 bool pres_score_shuffle() { return g_user_settings ? g_user_settings->is_score_shuffle : false; }   // W2-GA-21
 bool pres_score_repeat() { return g_user_settings ? g_user_settings->is_score_repeat : false; }
@@ -6214,7 +6655,10 @@ struct MenuAudio {
 // Faithful menu art bundle. All fields optional -- a nullptr/empty member falls
 // back to the rect-font placeholder for that element, so a partial-asset install
 // still runs. [RE: mainmenu.md §1/§5]
+bool g_yuri_shell=false;
 struct MenuArt {
+    bool yuri_shell=false;
+    ra2assets::ShpFile* lwscrn_large=nullptr;
     ra2assets::ShpFile* bg = nullptr;         // neutral.mix/mnscrnl.shp (frame 0)
     ra2assets::ShpFile* btn = nullptr;        // local.mix/mnbttn.shp (3 state frames)
     ra2assets::ShpFile* dlg = nullptr;        // sidec01.mix/bkgdlg.shp (setup panel)
@@ -6267,7 +6711,7 @@ struct MenuArt {
     // [SK-10] Skirmish-page flag pictures (local.mix, 47x23, magenta key,
     // FUN_004D1120): 0..8 = usai japi frai geri gbri djbi arbi lati rusi
     // (the lobby country order), 9 = rani (Random), 10 = obsi (observer).
-    const ra2assets::PcxImage* flags[11] = {};
+    const ra2assets::PcxImage* flags[12] = {};
     // Control text ramps (options.md §4: text yellow 0x00FFFF, disabled dark
     // red 0x00009F) for the 12metfnt glyph shade values.
     const ra2assets::Palette* font_pal_text = nullptr;
@@ -6340,21 +6784,28 @@ struct ShellButton {
 // same width/height, so there is exactly ONE source of the offset+scale.
 struct ShellXform {
     double s = 1.0, ox = 0.0, oy = 0.0;
+    bool large=false;
     static ShellXform make(int W, int H) {
-        const double s = std::min(W / 640.0, H / 480.0);
-        return { s, (W - 640.0 * s) / 2.0, (H - 480.0 * s) / 2.0 };
+        const int base_w=g_yuri_shell ? 800 : 640,base_h=g_yuri_shell ? 600 : 480;
+        const double s = std::min(double(W)/base_w,double(H)/base_h);
+        return { s, (W - base_w*s) / 2.0, (H - base_h*s) / 2.0,g_yuri_shell };
     }
-    SDL_Rect dev(int lx, int ly, int lw, int lh) const {
+    SDL_Rect native_dev(int lx, int ly, int lw, int lh) const {
         return SDL_Rect{ static_cast<int>(std::lround(ox + lx * s)),
                          static_cast<int>(std::lround(oy + ly * s)),
                          static_cast<int>(std::lround(lw * s)),
                          static_cast<int>(std::lround(lh * s)) };
     }
+    SDL_Rect dev(int lx,int ly,int lw,int lh) const {
+        const auto r=large ? ra2engine::yuri_shell_rect({lx,ly,lw,lh}) : ra2engine::SbRect{lx,ly,lw,lh};
+        return native_dev(r.x,r.y,r.w,r.h);
+    }
+    std::pair<int,int> logical(int dx,int dy) const {
+        const int x=static_cast<int>(std::floor((dx-ox)/s)),y=static_cast<int>(std::floor((dy-oy)/s));
+        return large ? ra2engine::yuri_shell_point(x,y) : std::make_pair(x,y);
+    }
     ra2engine::SbRect hit(const ra2engine::SbRect& r) const {
-        return { static_cast<int>(std::lround(ox + r.x * s)),
-                 static_cast<int>(std::lround(oy + r.y * s)),
-                 static_cast<int>(std::lround(r.w * s)),
-                 static_cast<int>(std::lround(r.h * s)) };
+        const auto p=dev(r.x,r.y,r.w,r.h);return {p.x,p.y,p.w,p.h};
     }
 };
 
@@ -6372,9 +6823,12 @@ void draw_shell(SDL_Renderer* ren, ra2engine::TextureCache& tc, const MenuArt& a
                 SDL_Texture* bink_tex = nullptr, int sdtp_frame = 0,
                 const int* row_frames = nullptr /* W2-UI-24: per-row SDBTNANM transition frame, -1 = none */) {
     const double canvas_scale = xf.s;
+    const bool large=art.yuri_shell;
+    const int left=large ? 632 : 472, bottom=large ? 568 : 448;
+    const int rows=large ? 9 : 6;
     // The ONE logical->device transform (shared verbatim with the hit-test).
     auto dev = [&](int lx, int ly, int lw, int lh) -> SDL_Rect {
-        return xf.dev(lx, ly, lw, lh);
+        return xf.native_dev(lx, ly, lw, lh);
     };
     // Palette fallbacks (partial-install robustness).
     const ra2assets::Palette* shell_pal = (art.shell_pal_ok ? &art.shell_pal : art.pal);
@@ -6401,9 +6855,9 @@ void draw_shell(SDL_Renderer* ren, ra2engine::TextureCache& tc, const MenuArt& a
     };
 
     // 1. Backdrop: mnscrns red radar map (472x448) under shell.pal.
-    blit_layer("shell:bg_s", art.bg_s, 0, shell_pal, 0, 0, 472, 448);
+    blit_layer(large ? "shell:bg_l" : "shell:bg_s", large ? art.bg : art.bg_s, 0, shell_pal, 0, 0, left, bottom);
     // 2. Bottom bar under the screen.
-    blit_layer("shell:lwscrn", art.lwscrn, 0, shell_pal, 0, 448, 472, 32);
+    blit_layer(large ? "shell:lwscrn_l" : "shell:lwscrn", large ? art.lwscrn_large : art.lwscrn, 0, shell_pal, 0, bottom, left, 32);
     // 3. Sidebar top: metal panel + WARNING mini-monitor bezel (SDTP frame 0 has
     //    the warning screen baked in; the animation draws INTO the hole on top).
     //    [SK-01] Pages without the 0x71C mini-monitor (Skirmish 0x102, Customize
@@ -6411,7 +6865,7 @@ void draw_shell(SDL_Renderer* ren, ra2engine::TextureCache& tc, const MenuArt& a
     //    the map preview 0x468; they pass monitor_frame < 0 (no WARNING loop).
     blit_layer(sdtp_frame == 1 ? "shell:sdtp1" : "shell:sdtp", art.sdtp,
                (art.sdtp && sdtp_frame < art.sdtp->count()) ? sdtp_frame : 0,
-               shell_pal, 472, 0, 168, 199);
+               shell_pal, left, 0, 168, 199);
     // 3b. §7.3: animated WARNING monitor (SDWRNANM, shell2.pal) into ctrl-0x71C
     //     hole at logical (508,47,92,53), current frame from the scene clock.
     //     Null-guarded: absent SHP/pal simply leaves SDTP's baked screen showing.
@@ -6422,32 +6876,32 @@ void draw_shell(SDL_Renderer* ren, ra2engine::TextureCache& tc, const MenuArt& a
                                         *art.sdwrnanm, mf, *shell2_pal);
         if (mt) {
             SDL_SetTextureColorMod(mt, 255, 255, 255);
-            SDL_Rect md = dev(508, 47, 92, 53);
+            SDL_Rect md = dev(left+36, 47, 92, 53);
             SDL_RenderCopy(ren, mt, nullptr, &md);
         }
     }
     // 4. Sidebar bottom: V-console + cables (bottom-anchored).
-    blit_layer("shell:sdbtm", art.sdbtm, 0, shell_pal, 472, 415, 168, 65);
+    blit_layer("shell:sdbtm", art.sdbtm, 0, shell_pal, left, bottom-33, 168, 65);
 
     // 5. Sidebar button grid (§7.2). SDBTNBKGD (shell2.pal) tiles all 6 grid rows
     //    — this fills the 12px metal strip left of each 156px button AND any empty
     //    sub-page row. Empty rows additionally get SDBTNANM frame 10 (empty socket).
-    bool row_used[6] = { false, false, false, false, false, false };
+    bool row_used[9] = {};
     for (const ShellButton& b : buttons) {
         const int r = (b.rect.y - 199) / 42;
-        if (r >= 0 && r < 6) row_used[r] = true;
+        if (r >= 0 && r < rows) row_used[r] = true;
     }
-    for (int r = 0; r < 6; ++r) {
+    for (int r = 0; r < rows; ++r) {
         const int ry = 199 + 42 * r;
-        blit_layer("shell:sdbtnbkgd", art.sdbtnbkgd, 0, shell2_pal, 472, ry, 168, 42);
+        blit_layer("shell:sdbtnbkgd", art.sdbtnbkgd, 0, shell2_pal, left, ry, 168, 42);
         if (!row_used[r] && art.sdbtnanm && sdbtn_pal && art.sdbtnanm->count() > 10) {
             // W5-E2: an empty row plays the 11..16 plate band while leaving.
             int ef = 10;
-            if (row_frames && row_frames[r] >= 0 && row_frames[r] < art.sdbtnanm->count()) ef = row_frames[r];
+            if (row_frames && r<6 && row_frames[r] >= 0 && row_frames[r] < art.sdbtnanm->count()) ef = row_frames[r];
             SDL_Texture* et = shp_frame_tex(tc, "shell:sdbtn" + std::to_string(ef), *art.sdbtnanm, ef, *sdbtn_pal);
             if (et) {
                 SDL_SetTextureColorMod(et, 255, 255, 255);
-                SDL_Rect ed = dev(484, ry, 156, 42);
+                SDL_Rect ed = dev(left+12, ry, 156, 42);
                 SDL_RenderCopy(ren, et, nullptr, &ed);
             }
         }
@@ -6471,7 +6925,7 @@ void draw_shell(SDL_Renderer* ren, ra2engine::TextureCache& tc, const MenuArt& a
             if (!bt) continue;
             if (b.enabled) SDL_SetTextureColorMod(bt, 255, 255, 255);
             else           SDL_SetTextureColorMod(bt, 120, 120, 130);   // disabled = dimmed
-            SDL_Rect d = dev(b.rect.x, b.rect.y, b.rect.w, b.rect.h);
+            SDL_Rect d = xf.dev(b.rect.x, b.rect.y, b.rect.w, b.rect.h);
             SDL_RenderCopy(ren, bt, nullptr, &d);
         } else if (art.btn) {                                    // legacy mnbttn fallback
             int frame = 0;
@@ -6483,7 +6937,7 @@ void draw_shell(SDL_Renderer* ren, ra2engine::TextureCache& tc, const MenuArt& a
             if (!bt) continue;
             SDL_SetTextureColorMod(bt, b.enabled ? 255 : 120, b.enabled ? 255 : 120,
                                    b.enabled ? 255 : 130);
-            SDL_Rect d = dev(b.rect.x, b.rect.y, b.rect.w, b.rect.h);
+            SDL_Rect d = xf.dev(b.rect.x, b.rect.y, b.rect.w, b.rect.h);
             SDL_RenderCopy(ren, bt, nullptr, &d);
         }
     }
@@ -6501,7 +6955,7 @@ void draw_shell(SDL_Renderer* ren, ra2engine::TextureCache& tc, const MenuArt& a
     //    the retail no-movie fallback. [RE: mainmenu_true.md §9.3]
     if (bink_tex) {
         SDL_SetTextureColorMod(bink_tex, 255, 255, 255);
-        SDL_Rect crt = dev(0, 0, 472, 448);
+        SDL_Rect crt = dev(0, 0, left, bottom);
         SDL_RenderCopy(ren, bink_tex, nullptr, &crt);
     }
 
@@ -6510,12 +6964,16 @@ void draw_shell(SDL_Renderer* ren, ra2engine::TextureCache& tc, const MenuArt& a
     //    canvas scale and shrink per-label if a long label would overflow.
     if (art.font && art.font_pal && art.fnt_ok) {
         const ra2assets::Font& f = *art.font;
+#ifdef __ANDROID__
+        const int lbl_scale = std::max(1,static_cast<int>(large ? std::lround(canvas_scale) : std::ceil(canvas_scale*1.5)));
+#else
         const int lbl_scale = std::max(1, static_cast<int>(std::lround(canvas_scale)));
+#endif
         const int hdr_scale = std::max(1, static_cast<int>(std::floor(canvas_scale)));
         // ldx/ldy = LOGICAL label shift (0 normally; §7.2 pressed = +2,+5).
         auto centered = [&](const std::string& s, int lx, int ly, int lw, int lh,
-                            int gscale, int ldx = 0, int ldy = 0) {
-            SDL_Rect box = dev(lx, ly, lw, lh);
+                            int gscale, int ldx = 0, int ldy = 0,bool native=false) {
+            SDL_Rect box = native ? dev(lx, ly, lw, lh) : xf.dev(lx,ly,lw,lh);
             int tw = fnt_text_width(f, s) * gscale;
             while (gscale > 1 && tw > box.w) { --gscale; tw = fnt_text_width(f, s) * gscale; }
             const int th = f.height() * gscale;
@@ -6526,19 +6984,31 @@ void draw_shell(SDL_Renderer* ren, ra2engine::TextureCache& tc, const MenuArt& a
         for (int i = 0; i < static_cast<int>(buttons.size()); ++i) {
             const ShellButton& b = buttons[i];
             const int brow = (b.rect.y - 199) / 42;
-            if (row_frames && brow >= 0 && brow < 6 && row_frames[brow] >= 0) continue;   // W2-UI-24
+#ifdef __ANDROID__
+            // Original animated buttons already contain their localized label.
+            // Painting another font on top produces doubled, unreadable text.
+            if (row_frames && brow >= 0 && brow < 6 && row_frames[brow] >= 0) continue;
+            // Cover baked small lettering before painting larger native labels.
+            if(!large) {
+                SDL_Rect face=dev(b.rect.x+3,b.rect.y+3,b.rect.w-6,b.rect.h-6);
+                SDL_SetRenderDrawColor(ren,i==pressed_ix ? 60 : 22,30,34,255);
+                SDL_RenderFillRect(ren,&face);
+            }
+#else
+            if (row_frames && brow >= 0 && brow < 6 && row_frames[brow] >= 0) continue;
+#endif
             const bool pressed = (i == pressed_ix);
             centered(b.label, b.rect.x, b.rect.y, b.rect.w, b.rect.h, lbl_scale,
                      pressed ? 2 : 0, pressed ? 5 : 0);
             if (!b.enabled) {                          // dark veil conveys disabled
                 SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
                 SDL_SetRenderDrawColor(ren, 16, 16, 20, 120);
-                SDL_Rect vd = dev(b.rect.x, b.rect.y, b.rect.w, b.rect.h);
+                SDL_Rect vd = xf.dev(b.rect.x, b.rect.y, b.rect.w, b.rect.h);
                 SDL_RenderFillRect(ren, &vd);
             }
         }
-        if (!header.empty())  centered(header, 477, 2, 162, 16, hdr_scale);
-        if (!version.empty()) centered(version, 477, 461, 162, 16, hdr_scale);
+        if (!header.empty())  centered(header, left+5, 2, 162, 16, hdr_scale,0,0,true);
+        if (!version.empty()) centered(version, left+5, bottom+13, 162, 16, hdr_scale,0,0,true);
     }
 }
 
@@ -6615,8 +7085,11 @@ public:
           ua_((g_art_chain = a_.chain,
                g_sidebar_mix = (soviet_campaign(cfg) || (cfg.campaign_map.empty() && !cfg.slots.empty() &&
                                                          cfg.slots[(std::size_t)local_slot_of(cfg)].side == ra2engine::World::Side::Soviet))
-                                   ? "sidec02.mix" : "sidec01.mix",
-               ra2engine::set_sidebar_style(std::string(g_sidebar_mix) == "sidec02.mix" ? 1 : 0),   // W2-UI-08
+                                   ? "sidec02.mix" : (cfg.campaign_map.empty() && !cfg.slots.empty() &&
+                                     cfg.slots[(std::size_t)local_slot_of(cfg)].side==ra2engine::World::Side::Yuri)
+                                   ? "sidec03.mix" : "sidec01.mix",
+               ra2engine::set_sidebar_style(std::string(g_sidebar_mix) == "sidec03.mix" ? 2 :
+                                           std::string(g_sidebar_mix) == "sidec02.mix" ? 1 : 0),
                load_unit_assets(dir_, ra2_))),
           va_(load_vehicle_assets(dir_, ra2_, ua_.pal, "HTNK")),
           language_(ra2assets::MixFile::open_path(dir_ + "language.mix")),
@@ -6644,7 +7117,7 @@ public:
           // P10: a campaign mission starts from the bare map world; its
           // CampaignRuntime (ctor body) places the mission's own objects.
           world_(cfg.campaign_map.empty() ? launch_skirmish(cfg, a_, ua_, ba_, rules_, &rules_ini_,
-                                                            &g_gf_spawned)
+                                                            &g_gf_spawned, &art_)
                                           : build_campaign_world(a_, ua_)),
           buildable_(building_buildable_tab(ba_, /*defenses=*/false)),   // active_tab_ starts at 0
           lay_(ra2engine::SidebarLayout::compute(kWinW, kWinH, buildable_)),
@@ -6653,14 +7126,37 @@ public:
           playfield_w_(kWinW - (sidebar_up_ ? lay_.bar.w : 0)),
           cam_(centered_camera(a_.map, playfield_w_, kWinH)),
           input_(world_, cam_, playfield_w_, kWinH) {
+        g_bld_events.clear();
+        g_bunker_motion.clear();
+        g_slave_miner_pack_fx.clear();
         // Projectile phase (P2) [RE: projectile.md]: the interactive game flies
         // real projectiles (tank arcs, Kirov bombs, flak scatter). This is one of
         // the only two enable_projectiles call sites (the other is
         // --demo-projectile) -- every byte-identity gate keeps the instant path.
+        if (ra2engine::diag::state().enabled.load()) {
+            std::ostringstream report;
+            report<<"engine="<<RA2_VERSION<<"\nmap="<<cfg.map_file<<" map_id="<<cfg.map_id
+                <<"\nmode_rules="<<cfg.mode_rules<<"\nseed="<<cfg.session_seed<<"\ncash="<<cfg.starting_cash
+                <<" tech="<<cfg.tech_level<<" units="<<cfg.unit_count<<" shroud="<<cfg.shroud
+                <<" crates="<<cfg.crates<<" superweapons="<<cfg.superweapons<<" short_game="<<cfg.short_game<<"\n";
+            for (std::size_t i=0;i<cfg.slots.size();++i) {
+                const auto& slot=cfg.slots[i];report<<"house="<<i<<" country="<<slot.country<<" side="<<static_cast<int>(slot.side)
+                    <<" ai="<<slot.is_ai<<" difficulty="<<static_cast<int>(slot.diff)<<" team="<<slot.alliance_team<<"\n";
+            }
+            for (const char* id : {"CMIN","CMON","ChronoMiner","CMINWO","ChronoOutSound","ChronoInSound"}) {
+                for (const auto& kv : rules_ini_.section(id)) report<<"rules ["<<id<<"] "<<kv.first<<"="<<kv.second<<"\n";
+                for (const auto& kv : art_ini_.section(id)) report<<"art ["<<id<<"] "<<kv.first<<"="<<kv.second<<"\n";
+            }
+            for (const char* id : {"General","CombatDamage","MultiplayerDialogSettings"})
+                for (const auto& kv : rules_ini_.section(id)) report<<"rules ["<<id<<"] "<<kv.first<<"="<<kv.second<<"\n";
+            ra2engine::diag::snapshot("skirmish.txt",report.str());
+            ra2engine::diag::note("SKIRMISH scene constructed map=%s mode=%s houses=%zu",cfg.map_file.c_str(),cfg.mode_rules.c_str(),cfg.slots.size());
+        }
         cfg_ = cfg;   // P7: the save's 'CONF' section rebuilds this scene's assets
         local_house_ = local_slot_of(cfg);   // L2: the house this client plays
         g_local_house = local_house_;
         world_.set_session_seed(session_seed_for(cfg));   // Net L0: before anything draws
+        ra2engine::diag::note("SKIRMISH actual-seed=%u local-house=%d",world_.session_seed(),local_house_);
         world_.enable_projectiles(ra2engine::resolve_projectile_rules(rules_));
         depth_arm_rules(world_, rules_);   // G16 (agent G): garrison + bridge rules
         w5_arm_combat(world_, rules_, &a_.map, &a_.theater);   // W5-B: sub-cells, land speed, crush
@@ -6705,6 +7201,18 @@ public:
                     }
                 }
         } catch (const std::exception&) { /* conquer.mix missing: infantry render degrades */ }
+        for (const auto& d : ba_.roster) if (d.slave_count > 0 && !d.slave_combat.image.empty()) {
+            const auto& image = d.slave_combat.image;
+            if (ua_.shps.count(image)) continue;
+            try {
+                MixFile conquer = ra2_.open_nested("conquer.mix");
+                ua_.shps.emplace(image, load_unit_shp(conquer, image));
+                ua_.anims.emplace(image, anim_from_art(art_, image));
+                std::cerr << "[slave] preloaded image=" << image << " frames=" << ua_.shps.at(image).count() << '\n';
+            } catch (const std::exception& ex) {
+                std::cerr << "[slave] image=" << image << " unavailable: " << ex.what() << '\n';
+            }
+        }
         // W2-GA-11: every [VehicleTypes] entry whose art says Voxel=no (DRON,
         // DLPH, SQD) draws with the SHP-vehicle frame rule, roster or not.
         for (const auto& kv : rules_ini_.section("VehicleTypes")) {
@@ -6915,15 +7423,27 @@ public:
         // sidebar FUN_006ab0b0 ignore input -- only Esc reaches the options]:
         // every pointer / key / touch event past the options menu is dropped.
         if (input_locked_) return;
+        if(ev.kind==ra2engine::InputEvent::Zoom) {
+            if(ev.dx<=0 || (sidebar_up_ && lay_.contains(ev.x0,ev.y0)) ||
+               touch_panel_contains(ev.x0,ev.y0) || menu_.open_)return;
+            const double old=world_zoom_;
+            world_zoom_=std::clamp(world_zoom_*std::clamp(ev.dx/1000000.0,0.8,1.25),0.75,1.75);
+            const double cx=-cam_.x+playfield_w_/(2*old),cy=-cam_.y+kWinH/(2*old);
+            input_.set_screen_zoom(world_zoom_);
+            input_.set_viewport(int(playfield_w_/world_zoom_),int(kWinH/world_zoom_));
+            cam_.x=int(std::lround(playfield_w_/(2*world_zoom_)-cx));
+            cam_.y=int(std::lround(kWinH/(2*world_zoom_)-cy));input_.pan(0,0);
+            return;
+        }
         if (hotkey(ev)) return;      // G-04: KeyboardMD.ini [Hotkey] commands
+        if (touch_banner_handle(ev)) return; // Instructions own touches before placement input.
         if (touch_bar_handle(ev)) return;   // W2-AR-08 touch command bar (touch_bar.inc)
         if (touch_ui_handle(ev)) return;    // W4-AM touch router (touch_ui.inc)
         if (sidebar_up_ && ev.kind == ra2engine::InputEvent::PointerDown &&
             lay_.contains(ev.x, ev.y)) {
             if (ev.button == ra2engine::InputEvent::Left) {
-                // SW cameo slots (W2-AN-04: one per granted type): left-click
-                // arms that SW's targeting when it is READY.
-                {
+                // Real play exposes powers in the defense strip, not radar slots.
+                if (!rp_on_) {
                     const std::vector<ra2engine::SuperweaponType> swt = world_.sw_types(local_house_);
                     for (int k = 0; k < static_cast<int>(swt.size()); ++k) {
                         if (!sw_slot_rect(lay_, k).contains(ev.x, ev.y)) continue;
@@ -6981,7 +7501,7 @@ public:
         thor_tick();   // Thor RA2: deck commands + snapshot (thor_scene.inc)
         menu_.set_mp(net_ != nullptr, mp_can_observe());   // W9-05-06: the MP options / exit pages
         tooltip_tick(dt);   // W2-UI-07 hover timer (game time)
-        touch_bar_tick(dt);   // W4-AM-05: the open touch column closes itself
+        touch_bar_tick(dt);   // Keep touch selection mode in sync with the shortcut dock
         touch_hint_tick(dt);  // W4-AM-01: the gesture hint
         // P7: the options menu / save-load dialog pause the game (the original
         // runs them as a modal loop; the scenario does not advance meanwhile).
@@ -7104,13 +7624,22 @@ public:
         }
         campaign_audio_pump();   // W2-CA-12: trigger speech/sound/music
         campaign_visuals_pump();   // W3-FX: trigger anims/camera/radar/particles/flashes
-        world_.step(dt);   // L2: every human house's production runs inside the step
+        ra2engine::diag::state().frame=sim_frame_;
+        if (sim_frame_%75==0) ra2engine::diag::note("TICK before-world frame=%u units=%zu buildings=%zu",sim_frame_,world_.units().size(),world_.buildings().size());
+        {
+            static ra2engine::diag::StageStats simulation_stats;
+            ra2engine::diag::StageTimer timer(simulation_stats,"world-step");
+            world_.step(dt);   // L2: every human house's production runs inside the step
+        }
+        if (sim_frame_%150==0) ra2engine::diag::probe_world(world_);
         pres_.note_launches(world_, world_.take_econ_launches());   // W7-12-01: EVA_UnitReady per launch (drained per tick)
         r210_track_steps();   // R-210 --play probes (scene-side, never saved)
         // wave-5 (R-042): spy-stolen tech unlocks -- the sidebar's copy of the
         // local roster (the World gates each house's own copy in its step).
         world_.apply_stolen_tech_gate(ur_.defs, local_house_);
+        if (sim_frame_%75==0) ra2engine::diag::note("TICK before-presentation frame=%u",sim_frame_);
         pres_.logic_tick(world_, ba_, lcredits(), world_.take_projectile_events());   // W3-B: anim clock, building slots, effects per logic tick
+        if (sim_frame_%75==0) ra2engine::diag::note("TICK after-presentation frame=%u",sim_frame_);
         world_.clear_frag_events();   // W7-12-07: the fragment beams were drawn by this tick's logic_tick
         rp_after_world_step();   // gap owner A: SW grant/revoke by building (G-25)
         gf_update(dt);   // gF: deploy EVA + skirmish game over
@@ -7229,7 +7758,7 @@ public:
         // when there is no audio device; pumps the sink when there is one.
         pres_.observe_selection(input_.selection(), input_);   // W7-12-26 first-selected speaker / W7-12-04 groups
         pres_.observe_mind_control(world_, campaign_ ? campaign_->mind_control_pairs()
-                                                     : std::vector<std::pair<int, int>>{});   // W7-10-05
+                                                     : ra2engine::skirmish_control_links(world_));
         pres_.update(dt, world_, lq(), ba_, lcredits(), act, cam_, playfield_w_, kWinH,
                      pres_vet_, net_ ? net_take(net_proj_buf_) : world_.take_projectile_events());   // (W3-B: drained per tick; normally empty)
         pres_vet_.clear();
@@ -7412,24 +7941,38 @@ public:
     // begin_frame/present are the driver's responsibility.
     void render(ra2engine::Platform& plat, ra2engine::TextureCache& tc) override {
         NetRenderClock net_rclock_(net_render_ms_);   // W9-01-03: render CPU time for PROCESS_TIME
+        g_pres_render_fraction=std::clamp(logic_acc_/kLogicDt,0.0,1.0);
+        static ra2engine::diag::StageStats render_stats;
+        ra2engine::diag::StageTimer report_timer(render_stats,"scene-render");
         SDL_Renderer* ren = static_cast<SDL_Renderer*>(plat.renderer());
-        radar_.set_view(cam_, playfield_w_, kWinH);   // G-09 viewport box
+        const int world_w=int(std::ceil(playfield_w_/world_zoom_)),world_h=int(std::ceil(kWinH/world_zoom_));
+        radar_.set_view(cam_, world_w, world_h);
+        float base_sx=1,base_sy=1;SDL_RenderGetScale(ren,&base_sx,&base_sy);
+        SDL_RenderSetScale(ren,base_sx*world_zoom_,base_sy*world_zoom_);
         update_light_sources();   // W3-FIX-A
         // W6-05-07: the hovered unit's health pips (a real mouse over the
         // tactical view; a touch has no hover).
-        g_hover_unit = (mouse_present_ && mx_ < playfield_w_ && !input_locked_) ? input_.pick_unit_at(mx_, my_) : -1;
-        render_world(ren, tc, a_, ua_, world_, cam_, kWinW, kWinH, &input_,
+        g_hover_unit = (mouse_present_ && mx_ < playfield_w_ && !input_locked_) ? input_.pick_unit_at(int(mx_/world_zoom_),int(my_/world_zoom_)) : -1;
+        render_world(ren, tc, a_, ua_, world_, cam_, world_w, world_h, &input_,
                      &vlist_, ba_.ok ? &ba_ : nullptr, ore_art_.any ? &ore_art_ : nullptr);
         hidden_.rules = &rules_ini_;   // W5-E2 R-146: the Behind= marker over occluded objects
-        hidden_.draw(ren, tc, world_, ba_, cam_, playfield_w_, kWinH, g_user_settings && g_user_settings->show_hidden);
+        hidden_.draw(ren, tc, world_, ba_, cam_, world_w, world_h, g_user_settings && g_user_settings->show_hidden);
         if (!(sidebar_up_ && lay_.contains(mx_, my_))) {
             int pcx = 0, pcy = 0;
             input_.placement_cell(pcx, pcy);
             const ra2engine::PlacementCheck pchk =
                 placement_eval(input_.placement_type(), pcx, pcy);   // gap owner A rules
-            draw_placement_cursor(ren, tc, world_, ba_, input_, a_, cam_, kWinW, kWinH,
+            draw_placement_cursor(ren, tc, world_, ba_, input_, a_, cam_, world_w, world_h,
                                   input_.placement_active() ? &pchk : nullptr);
         }
+        draw_production_chrome(ren, world_, input_, a_, cam_, world_w, &tc);
+        pip_tc_ = &tc;
+        draw_selected_building(ren);
+        draw_psychic_sensors(ren);
+        draw_beacons(ren,tc);
+        draw_touch_aim(ren);
+        SDL_RenderSetClipRect(ren,nullptr);
+        SDL_RenderSetScale(ren,base_sx,base_sy);
         if (ba_.ok && ba_.sidebar_ok) {
             for (int t = 0; t < 4; ++t) g_tab_has[t] = tab_buildable(t).empty() ? 0 : 1;   // W2-UI-06
             g_tab_flash[0] = lq().state(ra2engine::QueueCat::Structure).slot.ready ? 1 : 0;   // W5-PRES R-142
@@ -7447,12 +7990,9 @@ public:
                          static_cast<int>(std::llround(credits_shown_)), now_ / 1000.0,
                          active_tab_, &ur_, unit_fac_alive,
                          bm == ra2engine::Input::BaseMode::Repair ? 1
-                         : bm == ra2engine::Input::BaseMode::Sell ? 2 : 0);
+                                     : bm == ra2engine::Input::BaseMode::Sell ? 2 : 0, rp_on_);
         }
-        draw_production_chrome(ren, world_, input_, a_, cam_, playfield_w_, &tc);
-        pip_tc_ = &tc;
-        draw_selected_building(ren);   // G-10 / W2-UI-11
-        if (sidebar_up_) draw_queue_badges(ren, tc);    // G-07 / W2-UI-03/04
+        if (sidebar_up_) draw_queue_badges(ren, tc);    // G-07 / W2-UI-03/04 (Thor: deck shows them)
         draw_tooltip(ren, tc);         // W2-UI-07
         // Repair / Sell software cursor over the playfield [RE: §D8]; the OS
         // cursor is hidden only while it draws.
@@ -7474,11 +8014,9 @@ public:
             SDL_ShowCursor(drew ? SDL_DISABLE : SDL_ENABLE);
             os_cursor_hidden_ = drew;
         }
-        draw_beacons(ren, tc);    // W9-05-08: own + mutual allies' beacons
         draw_messages(ren, tc);   // W2-UI-21 (game saved, defeated, low power)
         draw_timer_stack(ren, tc);   // W6-05-04/05 mission timer + SW countdowns
-        draw_touch_bar(ren);      // W2-AR-08 (touch only)
-        draw_touch_aim(ren);           // W6-01-02 / -07 (touch only)
+        draw_touch_bar(ren, tc);      // W2-AR-08 (touch only)
         draw_touch_mode_banner(ren);   // W4-AM-03 (touch only)
         draw_touch_hint(ren);          // W4-AM-01 (touch only)
         draw_touch_hold_ring(ren);     // W4-AM-07 (touch only)
@@ -7814,6 +8352,12 @@ private:
                         pres_.sound().jukebox_play(jukebox_sections_[(std::size_t)menu_.music_track()]);
                     break;
                 case InGameMenu::MusicStop: pres_.sound().music_stop(); break;
+                case InGameMenu::ShareReport:
+                    ra2engine::diag::probe_world(world_);
+                    ra2engine::diag::note("REPORT requested from pause menu");
+                    ra2engine::diag::flush();
+                    ra2engine::os_android_share_report();
+                    break;
                 default: break;
             }
             return true;
@@ -8043,11 +8587,11 @@ private:
             const std::vector<int>& ft = rp_ft_of(cat);
             return ra2engine::can_start_unit(lq().state(cat), e, ur_.defs, world_.buildings(), ba_.roster,
                                              local_house_, ba_.groups,
-                                             !world_.factory_category_lost(ft, local_house_));
+                                             !world_.factory_category_lost(ft, local_house_), &world_.units());
         }
         const ra2engine::QueueCat bcat = (tab == 1) ? ra2engine::QueueCat::Defense : ra2engine::QueueCat::Structure;
         return ra2engine::can_start(lq().state(bcat), e, ba_.roster, world_.buildings(), local_house_, ba_.groups,
-                                    conyard_alive(world_, ba_, local_house_));
+                                    conyard_alive(world_, ba_, local_house_), &world_.units());
     }
     // "H:TYPE[:n]" (TYPE may be *).
     static bool play_parse_spec(const std::string& spec, int& h, std::string& type, int& n) {
@@ -8216,24 +8760,30 @@ private:
     std::vector<std::pair<double, double>> prev_audio_state_;
     // --- render helpers + FreeUnit tracker + frame-transient state ---
     std::vector<const VehicleAssets*> vlist_;
-    std::deque<VehicleAssets> unload_va_;   // W3-B UnloadingClass voxels (pointer-stable)
     // W3-B [rules UnloadingClass=, HARV -> HORV, CMIN -> CMON]: the harvester
     // body shown while it dumps at a refinery.
     void load_unloading_classes() {
+        // Publish a complete lookup at once. Shared ownership keeps assets alive
+        // for any draw already using the previous scene's lookup.
+        std::map<std::string, std::shared_ptr<const VehicleAssets>> loaded;
         const std::vector<const VehicleAssets*> cur = vlist_;
         for (const VehicleAssets* v : cur) {
             if (!v || !v->ok) continue;
             const std::string img = v->combat.image;
-            if (g_unloading_class.count(img)) continue;
+            if (loaded.count(img)) continue;
             std::string uc = rules_ini_.get(img, "UnloadingClass", "");
             const std::size_t sc = uc.find(';');
             if (sc != std::string::npos) uc = uc.substr(0, sc);
             while (!uc.empty() && std::isspace(static_cast<unsigned char>(uc.back()))) uc.pop_back();
             if (uc.empty()) continue;
-            unload_va_.push_back(load_vehicle_assets(dir_, ra2_, ua_.pal, uc));
-            g_unloading_class[img] = unload_va_.back().ok ? &unload_va_.back() : nullptr;
-            std::cerr << "[veh] " << img << " UnloadingClass=" << uc << " ok=" << unload_va_.back().ok << std::endl;
+            auto unload = std::make_shared<VehicleAssets>(load_vehicle_assets(dir_, ra2_, ua_.pal, uc));
+            const bool ok = unload->ok;
+            loaded[img] = ok ? std::move(unload) : nullptr;
+            std::cerr << "[veh] " << img << " UnloadingClass=" << uc << " ok="
+                      << (ok ? "1" : "0") << std::endl;
         }
+        std::lock_guard<std::mutex> lock(g_unloading_class_mu);
+        g_unloading_class.swap(loaded);
     }
     std::vector<int>     bstates_;
     int                  mx_ = kWinW / 2, my_ = kWinH / 2;   // last pointer (events)
@@ -8414,7 +8964,7 @@ int run_interactive(bool no_audio) {
 struct MenuArtStore {
     std::unique_ptr<ra2assets::ShpFile> bg, btn, dlg;
     // [Task 1] True-design chrome SHPs.
-    std::unique_ptr<ra2assets::ShpFile> bg_s, lwscrn, sdtp, sdbtm, sdbtnbkgd;
+    std::unique_ptr<ra2assets::ShpFile> bg_s, lwscrn, lwscrn_large, sdtp, sdbtm, sdbtnbkgd;
     // [Task exact] TRUE button + monitor animation SHPs.
     std::unique_ptr<ra2assets::ShpFile> sdbtnanm, sdwrnanm;
     // [Task 1] Chrome/button palettes (value type; validity tracked by *_ok bools).
@@ -8425,7 +8975,7 @@ struct MenuArtStore {
     std::unique_ptr<ra2assets::PcxImage> logo, title;
     // [P8] Options-page control skins.
     std::unique_ptr<ra2assets::PcxImage> trakgrip, trofl, trofm, trofr, chk_off, chk_on;
-    std::unique_ptr<ra2assets::PcxImage> flags[11];   // [SK-10]
+    std::unique_ptr<ra2assets::PcxImage> flags[12];   // [SK-10], plus Yuri
     std::unique_ptr<ra2assets::ShpFile> pudlg, pudlg_s;   // W2-UI-17
     std::unique_ptr<ra2assets::ShpFile> fsbkgd;           // W2-UI-18
     std::unique_ptr<ra2assets::Palette> fsscrn_pal;       // W2-UI-18
@@ -8527,6 +9077,7 @@ std::unique_ptr<MenuAudio> load_menu_music(const std::string& dir) {
 // essentials (bg + palette) decoded. Never throws -> a partial install still
 // runs the menu. All ids live in ra2.mix nested containers (RE mainmenu.md §1/§2).
 void load_menu_art(const std::string& dir, bool no_audio, MenuArtStore& store) {
+    g_yuri_shell=false;
     store.font_pal = make_font_palette();
     auto try_shp = [](MixFile& m, const char* name) -> std::unique_ptr<ra2assets::ShpFile> {
         try {
@@ -8553,6 +9104,7 @@ void load_menu_art(const std::string& dir, bool no_audio, MenuArtStore& store) {
               // [Task 1] True-design shell chrome (loaded, not yet composited).
               store.bg_s      = try_shp(neutral, "mnscrns.shp");
               store.lwscrn    = try_shp(neutral, "lwscrns.shp");
+              store.lwscrn_large = try_shp(neutral,"lwscrnl.shp");
               store.sdtp      = try_shp(neutral, "sdtp.shp");
               store.sdbtm     = try_shp(neutral, "sdbtm.shp");
               store.sdbtnbkgd = try_shp(neutral, "sdbtnbkgd.shp");
@@ -8676,9 +9228,38 @@ void load_menu_art(const std::string& dir, bool no_audio, MenuArtStore& store) {
         store.bink_dec.reset();
         store.bink_file.reset();
     }
+    // YR replaces the identically named shell movie in langmd.mix. The
+    // classic loader above is only a fallback, not the expansion's artwork.
+    try {
+        MixFile expansion = MixFile::open_path(dir + "langmd.mix");
+        for (const char* name : {"ra2ts_l.bik", "ra2ts_s.bik"}) {
+            const auto* entry=expansion.find(std::string(name));
+            if (!entry) continue;
+            try {
+                auto movie=std::make_unique<ra2assets::BinkFile>(ra2assets::BinkFile::parse(expansion.read(*entry)));
+                auto decoder=std::make_unique<ra2assets::BinkVideoDecoder>(*movie);
+                store.bink_dec.reset();
+                store.bink_file=std::move(movie);store.bink_dec=std::move(decoder);
+                g_yuri_shell=store.bg && store.lwscrn_large && store.bg->width()==632 && store.bg->height()==568;
+                ra2engine::diag::note("MENU_ASSET source=langmd.mix file=%s size=%dx%d frames=%d",name,store.bink_file->width,store.bink_file->height,store.bink_file->num_frames);
+                break;
+            } catch(const std::exception& error) {
+                ra2engine::diag::note("MENU_ASSET invalid source=langmd.mix file=%s error=%s",name,error.what());
+            }
+        }
+    } catch(const std::exception& error) {
+        ra2engine::diag::note("MENU_ASSET classic-fallback reason=%s",error.what());
+    }
+    try {
+        auto md=MixFile::open_path(dir+"ra2md.mix");auto local=md.open_nested("localmd.mix");
+        store.flags[11]=try_pcx(local,"yrii.pcx");
+        if(!store.flags[11])std::cerr<<"[menu-art] Yuri yrii.pcx missing\n";
+    } catch(const std::exception& e) { std::cerr<<"[menu-art] Yuri flag unavailable: "<<e.what()<<"\n"; }
     if (!no_audio) store.audio = load_menu_music(dir);
 
     store.art.bg       = store.bg.get();
+    store.art.yuri_shell=g_yuri_shell;
+    store.art.lwscrn_large=store.lwscrn_large.get();
     store.art.btn      = store.btn.get();
     store.art.dlg      = store.dlg.get();
     store.art.pal      = store.pal.get();
@@ -8686,6 +9267,17 @@ void load_menu_art(const std::string& dir, bool no_audio, MenuArtStore& store) {
     store.art.logo     = store.logo.get();
     store.art.title    = store.title.get();
     store.art.font     = store.font.get();
+    // Prefer the game's own Unicode UI face across every shell page. Keep
+    // the classic font above only as a fallback for incomplete installations.
+    try {
+        auto top=MixFile::open_path(dir+"ra2.mix");
+        auto local=top.open_nested("local.mix");
+        if(const auto* e=local.find(std::string("game.fnt"))) {
+            store.font=std::make_unique<ra2assets::Font>(ra2assets::Font::load_unicode(local.read(*e)));
+            std::cerr<<"[menu-art] Unicode game.fnt selected for all shell text\n";
+        }
+    } catch(const std::exception& ex) { std::cerr<<"[menu-art] UI font fallback: "<<ex.what()<<"\n"; }
+    store.art.font=store.font.get();
     store.art.font_pal = &store.font_pal;
     // [P8] Options-page skins + control text ramps.
     store.font_pal_text     = make_font_palette_tinted(255, 255, 0);   // 0x00FFFF yellow
@@ -8698,7 +9290,7 @@ void load_menu_art(const std::string& dir, bool no_audio, MenuArtStore& store) {
     store.art.trofr    = store.trofr.get();
     store.art.chk_off  = store.chk_off.get();
     store.art.chk_on   = store.chk_on.get();
-    for (int fi = 0; fi < 11; ++fi) store.art.flags[fi] = store.flags[fi].get();
+    for (int fi = 0; fi < 12; ++fi) store.art.flags[fi] = store.flags[fi].get();
     store.art.pudlg      = store.pudlg.get();
     store.art.pudlg_s    = store.pudlg_s.get();
     store.art.fsbkgd     = store.fsbkgd.get();
@@ -8814,15 +9406,14 @@ struct OptionsPageState {
     int  res_pick = -1;    // picked mode index (applied by the scene)
     static const std::vector<std::pair<int, int>>& modes() {
         static const std::vector<std::pair<int, int>> m = {
+#ifdef __ANDROID__
+            {0,0}, {960,540},
+#endif
             {640, 480}, {800, 600}, {1024, 768}, {1280, 720}, {1600, 900}, {1920, 1080}};
         return m;
     }
     static bool res_supported() {
-#ifdef __ANDROID__
-        return false;
-#else
         return true;
-#endif
     }
 
     void load(const ra2engine::Settings& s) {
@@ -8885,7 +9476,7 @@ void draw_options_page(SDL_Renderer* ren, ra2engine::TextureCache& tc, const Men
         p.fill(box, 0, 0, 0);
         p.frame(box, true);
         for (std::size_t i = 0; i < ms.size(); ++i)
-            p.label(std::to_string(ms[i].first) + " x " + std::to_string(ms[i].second) + " x 16", 259,
+            p.label(ms[i].first==0 ? "Auto (touch)" : std::to_string(ms[i].first) + " x " + std::to_string(ms[i].second), 259,
                     96 + static_cast<int>(i) * 18, 172, 18, 0);
     }
 
@@ -8920,7 +9511,14 @@ class SkirmishSetupScene;
 // click==draw invariant holds on every page. Back is just a nav button to the
 // parent page. `MainMenuScene` is an alias for the PAGE_MAIN entry (below).
 // W5-E2 (R-143): `set leave_band 1` in a --play script (see ShellScene).
+std::vector<int> g_skirmish_requested_starts;
 bool g_play_leave_band = false;
+// Independently drawn mobile hub. No CnCNet code, graphics or network
+// protocol is imported; the original shell remains the default.
+bool command_menu_enabled() {
+    const char* value=std::getenv("RA2_COMMAND_MENU");
+    return value && value[0]=='1';
+}
 class ShellScene : public Scene {
 public:
     ShellScene(const Rules& rules, bool no_audio, const MenuArt& art,
@@ -8953,6 +9551,8 @@ public:
     void   render(ra2engine::Platform& plat, ra2engine::TextureCache& tc) override;
     Scene* next() override { Scene* n = next_; next_ = nullptr; return n; }
     bool   wants_quit() const override { return quit_; }
+    int logical_width() const override {return menu_canvas_width();}
+    int logical_height() const override {return menu_canvas_height();}
     // G0 --play: page name + every button (greyed ones report enabled=0).
     void   play_probe(ra2play::Probe& p) override {
         p.scene = std::string("shell:") + header();
@@ -9012,8 +9612,8 @@ private:
     // The ONE logical(640x480)->device transform (see ShellXform): built from the
     // SAME kWinW/kWinH the window is created at, used by BOTH the hit-test here
     // and draw_shell in render(). Single source -> drawn rects == click rects.
-    static ShellXform xform() { return ShellXform::make(kWinW, kWinH); }
-    static ra2engine::SbRect to_device(const ra2engine::SbRect& lr) {
+    ShellXform xform() const { return ShellXform::make(g_ui_w,g_ui_h); }
+    ra2engine::SbRect to_device(const ra2engine::SbRect& lr) const {
         return xform().hit(lr);
     }
     // This page's header text ("Main Menu" / "Single Player" / ...).
@@ -9037,7 +9637,9 @@ private:
     static constexpr int kBtnX = 484, kBtnW = 156, kBtnH = 42;
     static int rowY(int k) { return 199 + 42 * k; }
     std::vector<ShellButton> layout() const {
-        auto btn = [](int row, const char* s, bool en, int act, ShellPage t) {
+        auto btn = [&](int row, const char* s, bool en, int act, ShellPage t) {
+            if(page_==PAGE_MAIN && command_menu_enabled())
+                return ShellButton{{40,115+row*49,280,44},s,en,act,t};
             return ShellButton{ {kBtnX, rowY(row), kBtnW, kBtnH}, s, en, act, t }; };
         switch (page_) {
             case PAGE_SINGLE:   // dialog 0x100
@@ -9087,7 +9689,7 @@ private:
                     btn(2, "Network",          true,  ACT_MP_LAN, PAGE_MAIN),
                     btn(3, "Movies & Credits", true,  ACT_GOTO, PAGE_MOVIES),
                     btn(4, "Options",          true,  ACT_GOTO, PAGE_OPTIONS),
-                    btn(5, "Exit Game",        true,  ACT_QUIT, PAGE_MAIN),
+                    btn(5, "Exit Game", true, ACT_QUIT, PAGE_MAIN),
                 };
         }
     }
@@ -9137,10 +9739,9 @@ private:
         return art_.audio && art_.audio->sys.enabled && art_.audio->sys.mixer;
     }
     // Device point -> LOGICAL 640x480 (inverse of the shared ShellXform).
-    static void to_logical(int dx, int dy, int& lx, int& ly) {
+    void to_logical(int dx, int dy, int& lx, int& ly) const {
         const ShellXform xf = xform();
-        lx = static_cast<int>(std::floor((dx - xf.ox) / xf.s));
-        ly = static_cast<int>(std::floor((dy - xf.oy) / xf.s));
+        const auto point=xf.logical(dx,dy);lx=point.first;ly=point.second;
     }
     // Options-page pointer handling; returns true when the event was consumed.
     bool options_handle(const ra2engine::InputEvent& ev);
@@ -9353,6 +9954,29 @@ void MainMenuScene::render(ra2engine::Platform& plat, ra2engine::TextureCache& t
     SDL_Renderer* ren = static_cast<SDL_Renderer*>(plat.renderer());
     const std::vector<ShellButton> btns = layout();
 
+    if(page_==PAGE_MAIN && command_menu_enabled()) {
+        SDL_SetRenderDrawColor(ren,12,18,26,255);SDL_RenderClear(ren);
+        const ShellPainter p{ren,tc,art_,xform()};
+        p.label("COMMAND CENTER",40,30,560,35,1);
+        p.label("YURI'S REVENGE / ANDROID",40,72,560,24,0);
+        p.fill(p.dev(350,115,250,289),20,30,42);
+        p.label("OPERATIONS",370,135,210,28,1);
+        p.label("Campaign / Skirmish",370,180,210,26,0);
+        p.label("LAN / Online",370,216,210,26,0);
+        p.label("Unofficial community port",365,310,225,25,0);
+        p.label("Original game files required",365,346,225,25,0);
+        for(const auto& b:btns) {
+            const auto r=to_device(b.rect);const bool hot=r.contains(mx_,my_);
+            const SDL_Rect rect{r.x,r.y,r.w,r.h};
+            p.fill(rect,hot?40:24,hot?65:38,hot?86:52);
+            SDL_SetRenderDrawColor(ren,hot?122:64,hot?205:100,hot?226:122,255);SDL_RenderDrawRect(ren,&rect);
+            p.label(b.label,b.rect.x+12,b.rect.y+5,b.rect.w-24,b.rect.h-10,1,b.enabled);
+        }
+        p.label(RA2_VERSION,40,435,560,22,0);
+        sld_.render(ren,tc,SDL_GetTicks());gf_confirm_.render(ren,tc);
+        return;
+    }
+
     // --- Art-guarded fallback: no essential chrome/palette (partial install) ->
     // a plain rect-font placeholder using the SAME device rects as the real path,
     // so the menu is still clickable and consistent with handle().
@@ -9417,7 +10041,7 @@ void MainMenuScene::render(ra2engine::Platform& plat, ra2engine::TextureCache& t
             const auto mode = OptionsPageState::modes()[static_cast<std::size_t>(opt_.res_pick)];
             opt_.res_pick = -1;
             if (SDL_Window* win = SDL_RenderGetWindow(ren))
-                if (!(SDL_GetWindowFlags(win) & SDL_WINDOW_FULLSCREEN_DESKTOP)) SDL_SetWindowSize(win, mode.first, mode.second);
+                if (mode.first>0 && mode.second>0 && !(SDL_GetWindowFlags(win) & SDL_WINDOW_FULLSCREEN_DESKTOP)) SDL_SetWindowSize(win, mode.first, mode.second);
         }
         const std::string res = !res_label_.empty() ? res_label_
                                 : std::to_string(plat.width()) + " x " + std::to_string(plat.height()) + " x 16";
@@ -9489,7 +10113,7 @@ bool ShellScene::options_handle(const ra2engine::InputEvent& ev) {
                 g_user_settings->screen_height = mode.second;
                 save_user_settings(*g_user_settings);
             }
-            res_label_ = std::to_string(mode.first) + " x " + std::to_string(mode.second) + " x 16";
+            res_label_ = mode.first==0 ? "Auto (touch)" : std::to_string(mode.first) + " x " + std::to_string(mode.second);
         }
         opt_.res_open = false;
         return true;
@@ -14557,7 +15181,7 @@ struct DemoMultihouseResult { std::vector<std::string> witness; uint64_t hash = 
 ra2engine::World launch_skirmish(const ra2engine::SkirmishConfig& cfg,
                                  Assets& a, UnitAssets& ua, BuildingAssets& ba,
                                  const Rules& rules, const Ini* gf_rules_ini,
-                                 std::vector<std::string>* gf_spawned) {
+                                 std::vector<std::string>* gf_spawned, const Art* gf_art) {
     load_progress("SKIRMISH WORLD");   // W2-AR-02 loading-screen checkpoint
     ra2engine::World world = build_world(a, ua, 0);          // count=0 -> launcher spawns everything
     ra2engine::configure_skirmish_houses(world, cfg);       // house table + toggles + credit seed + minimal AI
@@ -14612,6 +15236,16 @@ ra2engine::World launch_skirmish(const ra2engine::SkirmishConfig& cfg,
         // original picked. The pick above still runs, so the RNG stream is
         // unchanged; empty (every normal path) = no effect.
         if (!g_simdiff_starts.empty()) picks = g_simdiff_starts;
+        if(!g_skirmish_requested_starts.empty()) {
+            std::vector<bool> used(real_starts.size(),false);
+            for(std::size_t i=0;i<picks.size() && i<g_skirmish_requested_starts.size();++i) {
+                const int requested=g_skirmish_requested_starts[i];
+                if(requested>=0 && requested<int(real_starts.size()) && !used[requested]){picks[i]=requested;used[requested]=true;}
+                else picks[i]=-1;
+            }
+            for(int& pick:picks)if(pick<0){for(std::size_t j=0;j<used.size();++j)if(!used[j]){pick=int(j);used[j]=true;break;}}
+            g_skirmish_requested_starts.clear();
+        }
         gf_arm_mcv(world, ba, rules, /*skirmish_session=*/true);
         // [SK-25] The lobby's MCV Repacks checkbox overrides the rules default.
         if (cfg.mcv_redeploys >= 0) world.set_mcv_redeploys(cfg.mcv_redeploys != 0);
@@ -14629,7 +15263,7 @@ ra2engine::World launch_skirmish(const ra2engine::SkirmishConfig& cfg,
             ++combatant_ix;
             const std::string country = s.country.empty() ? gf_default_country(s.side) : s.country;
             const int mcv = gf_spawn_start_force(world, *gf_rules_ini, rules, i, country, bx, by,
-                                                 cfg.unit_count, cfg.tech_level, rng, gf_spawned);
+                                                 cfg.unit_count, cfg.tech_level, rng, gf_spawned, gf_art);
             if (s.is_ai && ba.ok) {
                 world.enable_ai_house(i, make_ai_config(ba, rules, s.diff, cfg.starting_cash));
                 // An AI house unfolds its MCV at once (the AI's "deploy the
@@ -18856,6 +19490,27 @@ int run_demo_saveload() {
 #include "realplay_combat_probe.inc"   // gap owner C: --probe-combat (real GameScene harness)
 
 int main(int argc, char** argv) {
+#if defined(__ANDROID__) && !defined(RA2_ANDROID_CLI)
+    if (const char* root=SDL_AndroidGetInternalStoragePath()) {
+        if (ra2engine::diag::start(std::string(root)+"/diagnostics")) {
+            static auto* buffer=new ra2engine::diag::StreamBuffer;
+            std::cerr.rdbuf(buffer);std::cout.rdbuf(buffer);
+            struct Relay {SDL_LogOutputFunction previous=nullptr;void* context=nullptr;};
+            static Relay relay;SDL_LogGetOutputFunction(&relay.previous,&relay.context);
+            SDL_LogSetOutputFunction([](void* data,int category,SDL_LogPriority priority,const char* msg){
+                ra2engine::diag::note("SDL %s",msg);
+                auto* saved=static_cast<Relay*>(data);if(saved->previous)saved->previous(saved->context,category,priority,msg);
+            },&relay);
+            // Archive lookup tracing is opt-in; ordinary reports keep engine events.
+            if(const char* trace=std::getenv("RA2_TRACE_ASSETS"))
+                ra2engine::diag::state().trace_assets=std::string(trace)=="1";
+            if(ra2engine::diag::state().trace_assets.load())
+                ra2assets::asset_trace_callback().store(ra2engine::diag::asset);
+            std::atexit(ra2engine::diag::stop);
+            ra2engine::diag::note("ENGINE START version=%s",RA2_VERSION);
+        }
+    }
+#endif
     // W2-AR-30: SDL-internal assertions log and continue; they never block on
     // a console prompt (desktop) or a modal dialog (Android).
     install_sdl_assert_handler();
@@ -18875,7 +19530,9 @@ int main(int argc, char** argv) {
         // RA2Activity.onDestroy() then ends the process, so the next launch
         // starts with fresh statics (g_art_chain, caches, ...). (exit() from
         // this thread raced the Java side's teardown: SIGSEGV on the emulator.)
-        return run_menu(/*no_audio=*/false);
+        const int result=run_menu(/*no_audio=*/false);
+        ra2engine::diag::note("ENGINE NORMAL EXIT code=%d",result);
+        return result;
 #else
         // R-171 (dev): RA2_PROFILE=<file> samples the main thread until exit.
         struct ProfGuard {
