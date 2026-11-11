@@ -4,7 +4,7 @@
 
 > Not affiliated with, endorsed by or sponsored by Electronic Arts. No game data included: you need your own copy of Red Alert 2 with Yuri's Revenge.
 
-▶ **[Watch the install guide](https://youtu.be/hMupGiEim60)** (3 min) · **[Showcase video](https://youtu.be/DOWgL-C954M)** · **[0.3.0 Yuri update](https://youtu.be/Or8qxMfXrh4)**
+▶ **[Update video: 0.4.0](https://youtu.be/BBisMbSHoLw)** · **[Watch the install guide](https://youtu.be/hMupGiEim60)** (3 min) · **[Showcase video](https://youtu.be/DOWgL-C954M)** · **[0.3.0 Yuri update](https://youtu.be/Or8qxMfXrh4)**
 
 | Launcher (top + bottom screen) | Playing Yuri | The deck: your side's own sidebar |
 |---|---|---|

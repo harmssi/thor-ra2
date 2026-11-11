@@ -34,3 +34,5 @@ Install over 0.3.0, the game files and saves stay.
 - Everything from 0.3.0 still applies: Yuri is beta and skirmish only, the game is the RA2 Engine beta.
 
 `ThorRA2-v0.4.0.apk` · SHA-256 `caedb4dbe6152d9d722944a8bc29d6452709d7de35974fa6836ba930f5c166e2`
+
+▶ Update video: https://youtu.be/BBisMbSHoLw
