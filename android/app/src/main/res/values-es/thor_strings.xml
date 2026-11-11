@@ -32,7 +32,7 @@
     <string name="deck_side_soviet">SOVIÉTICOS</string>
     <string name="deck_side_yuri">YURI</string>
     <string name="deck_h_place">Coloca el edificio</string>
-    <string name="deck_d_place">Toca el mapa en la pantalla superior. Mantén pulsado allí para cancelar.</string>
+    <string name="deck_d_place">Toca el lugar en la pantalla superior y otra vez para construir. La X cancela.</string>
     <string name="deck_h_target">Elige un objetivo</string>
     <string name="deck_d_target">Toca el objetivo en la pantalla superior.</string>
     <string name="deck_h_repair">Modo reparación</string>
@@ -40,7 +40,6 @@
     <string name="deck_h_sell">Modo venta</string>
     <string name="deck_d_sell">Toca un edificio arriba. Vuelve a tocar VENDER para terminar.</string>
     <string name="deck_h_ready">Listo para órdenes</string>
-    <string name="deck_d_ready">Toca un icono para construir y un edificio LISTO para colocarlo. Mantener = pausar y luego cancelar. L1 / R1 cambian de pestaña.</string>
     <string name="deck_d_action">Orden enviada</string>
     <string name="deck_act_hold">En espera: %1$s</string>
     <string name="deck_act_cancel">Cancelado: %1$s</string>
@@ -110,4 +109,29 @@
     <string name="files_credits">Créditos y licencias</string>
     <string name="files_footer">RA2 Engine de Omar El Arab · facción Yuri de Bryle13 (RA2AndroidPort) · port Thor de harmssi. Sin relación con EA.</string>
     <string name="files_after_crash">Tras un cierre inesperado, comparte el informe antes de volver a jugar.</string>
+    <string name="deck_c_stop">ALTO</string>
+    <string name="deck_c_guard">GUARDIA</string>
+    <string name="deck_c_deploy">DESPLEGAR</string>
+    <string name="deck_c_type">TODOS DEL TIPO</string>
+    <string name="deck_c_cheer">VITOREAR</string>
+    <string name="deck_c_scatter">DISPERSAR</string>
+    <string name="deck_c_army">EJÉRCITO</string>
+    <string name="deck_c_next">SIGUIENTE</string>
+    <string name="deck_c_base">BASE</string>
+    <string name="deck_c_alert">ÚLTIMA ALERTA</string>
+    <string name="deck_c_slower">MÁS LENTO</string>
+    <string name="deck_c_faster">MÁS RÁPIDO</string>
+    <string name="deck_c_speed">VELOCIDAD</string>
+    <string name="deck_c_save">GUARDAR</string>
+    <string name="deck_c_load">MANTENER: CARGAR</string>
+    <string name="deck_allies">ALIANZAS</string>
+    <string name="deck_briefing">MISIÓN</string>
+    <string name="deck_group_empty">MANTENER = FIJAR</string>
+    <string name="deck_group_units">%1$d UNIDADES</string>
+    <string name="deck_h_selected">%1$d seleccionadas</string>
+    <string name="deck_act_saved">Guardado rápido escrito</string>
+    <string name="deck_act_loading">Cargando el guardado rápido</string>
+    <string name="deck_act_load_hold">Mantén CARGAR para cargar el guardado rápido</string>
+    <string name="deck_act_no_save">Aún no hay guardado rápido</string>
+    <string name="deck_d_ready">Toca un icono para construir, mantén para pausar, otra vez para cancelar. Grupos: mantener = fijar, tocar = elegir, otra vez = ver.</string>
 </resources>

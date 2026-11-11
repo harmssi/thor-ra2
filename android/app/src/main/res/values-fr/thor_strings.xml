@@ -32,7 +32,7 @@
     <string name="deck_side_soviet">SOVIÉTIQUES</string>
     <string name="deck_side_yuri">YURI</string>
     <string name="deck_h_place">Placez le bâtiment</string>
-    <string name="deck_d_place">Touchez la carte sur l\'écran du haut. Appui long pour annuler.</string>
+    <string name="deck_d_place">Touchez l\'emplacement sur l\'écran du haut, puis encore pour construire. Le X annule.</string>
     <string name="deck_h_target">Choisissez une cible</string>
     <string name="deck_d_target">Touchez la cible sur l\'écran du haut.</string>
     <string name="deck_h_repair">Mode réparation</string>
@@ -40,7 +40,6 @@
     <string name="deck_h_sell">Mode vente</string>
     <string name="deck_d_sell">Touchez un bâtiment en haut. Touchez VENDRE à nouveau pour arrêter.</string>
     <string name="deck_h_ready">Prêt pour les ordres</string>
-    <string name="deck_d_ready">Touchez une icône pour construire, un bâtiment PRÊT pour le placer. Appui long = pause puis annuler. L1 / R1 changent d\'onglet.</string>
     <string name="deck_d_action">Ordre envoyé</string>
     <string name="deck_act_hold">En pause : %1$s</string>
     <string name="deck_act_cancel">Annulé : %1$s</string>
@@ -110,4 +109,29 @@
     <string name="files_credits">Crédits et licences</string>
     <string name="files_footer">RA2 Engine d\'Omar El Arab · faction Yuri de Bryle13 (RA2AndroidPort) · portage Thor par harmssi. Sans lien avec EA.</string>
     <string name="files_after_crash">Après un plantage, partagez le rapport avant de relancer.</string>
+    <string name="deck_c_stop">STOP</string>
+    <string name="deck_c_guard">GARDE</string>
+    <string name="deck_c_deploy">DÉPLOYER</string>
+    <string name="deck_c_type">TOUS DU TYPE</string>
+    <string name="deck_c_cheer">ACCLAMER</string>
+    <string name="deck_c_scatter">DISPERSER</string>
+    <string name="deck_c_army">ARMÉE</string>
+    <string name="deck_c_next">SUIVANTE</string>
+    <string name="deck_c_base">BASE</string>
+    <string name="deck_c_alert">DERNIÈRE ALERTE</string>
+    <string name="deck_c_slower">PLUS LENT</string>
+    <string name="deck_c_faster">PLUS VITE</string>
+    <string name="deck_c_speed">VITESSE</string>
+    <string name="deck_c_save">SAUVEGARDER</string>
+    <string name="deck_c_load">MAINTENIR : CHARGER</string>
+    <string name="deck_allies">ALLIANCES</string>
+    <string name="deck_briefing">MISSION</string>
+    <string name="deck_group_empty">MAINTENIR = FIXER</string>
+    <string name="deck_group_units">%1$d UNITÉS</string>
+    <string name="deck_h_selected">%1$d sélectionnées</string>
+    <string name="deck_act_saved">Sauvegarde rapide écrite</string>
+    <string name="deck_act_loading">Chargement de la sauvegarde rapide</string>
+    <string name="deck_act_load_hold">Maintenez CHARGER pour charger la sauvegarde rapide</string>
+    <string name="deck_act_no_save">Pas encore de sauvegarde rapide</string>
+    <string name="deck_d_ready">Touchez une icône pour construire, maintenez pour mettre en pause, encore pour annuler. Groupes : maintenir = fixer, toucher = choisir, encore = voir.</string>
 </resources>

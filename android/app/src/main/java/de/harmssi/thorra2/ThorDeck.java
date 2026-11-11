@@ -6,6 +6,9 @@ import android.graphics.Canvas;
 import android.graphics.LinearGradient;
 import android.graphics.Paint;
 import android.graphics.Path;
+import android.graphics.PorterDuff;
+import android.graphics.PorterDuffColorFilter;
+import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.Shader;
 import android.os.Handler;
@@ -23,14 +26,20 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * Command deck for the AYN Thor's bottom screen (display 4, 1240x1080).
+ * Command deck for the AYN Thor's bottom screen (display 4, 1240x1080), drawn as the game's own
+ * sidebar: the sidebar art of the player's side (Allied, Soviet, Yuri), the HUD font and the
+ * cameos are read at runtime from the player's game files by the engine (engine/thor_scene.inc);
+ * nothing of it is in the APK. Without readable art the same layout is drawn as plain steel plates.
  *
- * Header (credits, power, side + mode) · radar · REPAIR / SELL / MENU / ZOOM · superweapons ·
- * build tabs (buildings, defenses, infantry, vehicles) with the cameos from the player's
- * own game files. All data is a snapshot from the engine (engine/thor_scene.inc); every
- * action goes back as a command and runs through the engine's sidebar code.
+ * Left: the sidebar head as in the game (credits, options / diplomacy, radar, repair / sell, the
+ * four tabs), four superweapon sockets, ZOOM. Right: the cameo strip four columns wide with the
+ * power bar, the advanced command bar (stop, guard, deploy, type select, cheer, scatter, army,
+ * next unit, base, alert), control groups I to V, game speed, quick save / load, a status line.
  *
- * Laid out on a 1240x1080 grid and scaled to the view.
+ * All data is a snapshot from the engine; every action goes back as a command and runs through
+ * the engine's own sidebar / keyboard-command code.
+ *
+ * Laid out in the art's own pixels (462 wide = the 168 px sidebar + a 294 px strip) and scaled.
  */
 public class ThorDeck extends View {
     static final class Item {
@@ -43,6 +52,25 @@ public class ThorDeck extends View {
         final RectF bounds = new RectF();
     }
 
+    /** A button of the deck (rect in art pixels). */
+    static final class Btn {
+        final RectF r = new RectF();
+        final int kind, arg;
+
+        Btn(int kind, int arg) {
+            this.kind = kind;
+            this.arg = arg;
+        }
+    }
+
+    private static final int K_MENU = 1, K_DIPLO = 2, K_REPAIR = 3, K_SELL = 4, K_TAB = 5, K_ZOOM = 6, K_HOT = 7,
+            K_GROUP = 8, K_SLOWER = 9, K_SPEED = 10, K_FASTER = 11, K_SAVE = 12, K_LOAD = 13;
+
+    // Art-pixel layout: the sidebar's own numbers (engine/sidebar.hpp).
+    private static final float AW = 462f, SB = 168f, STRIP_ROWS = 5f, ROW = 50f, BAR_Y = 250f, BTN_W = 52f,
+            BTN_H = 32f, BAR_X = SB + 17f, STATUS_Y = BAR_Y + 4 * BTN_H;
+    private static final int COLS = 4;
+
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final int[] snap = new int[4096];
     private final int[] radarPx = new int[512 * 512];
@@ -53,49 +81,59 @@ public class ThorDeck extends View {
     private final Map<Integer, Bitmap> cameos = new HashMap<>();
     private final Map<Integer, Boolean> noCameo = new HashMap<>();
     private final Map<Integer, String> names = new HashMap<>();
+    private final Map<Integer, PorterDuffColorFilter> tints = new HashMap<>();
     private final int[] cameoBuf = new int[256 * 256];
     private final int[] cameoWh = new int[2];
 
     private boolean inGame;
-    private int credits, powerOut, powerDrain, flags, faction, activeTab, tabs;
+    private int credits, powerOut, powerDrain, flags, faction, activeTab, tabs, speed = -1, selected, misc;
     private int radarW, radarH, viewX, viewY, viewW, viewH;
     private float shownCredits;
+    private long radarOnAt;
+    private boolean radarWasOn;
     private final List<Item> items = new ArrayList<>();
     private List<Item> hitItems = new ArrayList<>();
     private final List<Super> supers = new ArrayList<>();
     private List<Super> hitSupers = new ArrayList<>();
     private final float[] tabScroll = new float[4];
     private final int[] groupCount = new int[5], groupSel = new int[5];
-    private final RectF groupPanel = new RectF();
-    private final RectF[] groupRect = {new RectF(), new RectF(), new RectF(), new RectF(), new RectF()};
     private String lastAction = "";
     private long lastActionAt;
 
-    // Layout (design units on a 1240x1080 grid)
-    private float s = 1f;
-    private final RectF header = new RectF();
-    private final RectF radarPanel = new RectF(), radarArea = new RectF();
-    private final RectF btnRepair = new RectF(), btnSell = new RectF(), btnMenu = new RectF(), btnZoom = new RectF();
-    private final RectF superPanel = new RectF();
-    private final RectF[] tabRect = {new RectF(), new RectF(), new RectF(), new RectF()};
-    private final RectF gridPanel = new RectF(), gridArea = new RectF();
+    private float k = 1f, ah = 402f, s = 1f; // art scale, art height, idle-screen scale
+    private final List<Btn> btns = new ArrayList<>();
+    private final Btn bMenu = add(K_MENU, 0), bDiplo = add(K_DIPLO, 0), bRepair = add(K_REPAIR, 0),
+            bSell = add(K_SELL, 0), bZoom = add(K_ZOOM, 0), bSlower = add(K_SLOWER, 0), bSpeed = add(K_SPEED, 0),
+            bFaster = add(K_FASTER, 0), bSave = add(K_SAVE, 0), bLoad = add(K_LOAD, 0);
+    private final Btn[] bTab = {add(K_TAB, 0), add(K_TAB, 1), add(K_TAB, 2), add(K_TAB, 3)};
+    private final Btn[] bGroup = {add(K_GROUP, 0), add(K_GROUP, 1), add(K_GROUP, 2), add(K_GROUP, 3), add(K_GROUP, 4)};
+    // The advanced command bar: {action, art button (buttonNN.shp) or -1 = own icon, name}
+    private static final int[][] HOTS = {
+            {ThorBridge.HOT_STOP, 8, R.string.deck_c_stop}, {ThorBridge.HOT_GUARD, 6, R.string.deck_c_guard},
+            {ThorBridge.HOT_DEPLOY, 4, R.string.deck_c_deploy}, {ThorBridge.HOT_TYPE_SELECT, 3, R.string.deck_c_type},
+            {ThorBridge.HOT_CHEER, 10, R.string.deck_c_cheer}, {ThorBridge.HOT_SCATTER, -1, R.string.deck_c_scatter},
+            {ThorBridge.HOT_ARMY, -1, R.string.deck_c_army}, {ThorBridge.HOT_NEXT, -1, R.string.deck_c_next},
+            {ThorBridge.HOT_BASE, -1, R.string.deck_c_base}, {ThorBridge.HOT_ALERT, -1, R.string.deck_c_alert}};
+    private final Btn[] bHot = new Btn[HOTS.length];
+    private final RectF radarView = new RectF(), stripArea = new RectF();
 
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint bmpPaint = new Paint(); // no filtering: crisp pixel art
+    private final Paint glyphPaint = new Paint();
     private final Paint radarPaint = new Paint();
-    private Paint microLabel, microLabelDim, monoBig, monoMid, monoSmall, bodyDim, small, badgeText;
+    private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Rect src = new Rect();
+    private final RectF dst = new RectF();
+    private Paint bodyDim;
 
     // Touch
     private Item downItem;
     private Super downSuper;
-    private boolean downRadar, downGrid, longFired, scrolled;
-    private RectF downButton;
-    private int downTab = -1, downGroup = -1;
+    private Btn downBtn, flashBtn;
+    private boolean downRadar, downStrip, longFired, scrolled;
     private float downY, lastY;
-    private long lastRadarCmd;
+    private long lastRadarCmd, flashAt;
     private int flashKey = -1;
-    private RectF flashButton;
-    private long flashAt;
 
     private final Runnable longPress = new Runnable() {
         @Override
@@ -103,9 +141,15 @@ public class ThorDeck extends View {
             if (downItem != null && !scrolled) {
                 longFired = true;
                 click(downItem, true); // hold, then cancel
-            } else if (downGroup >= 0) {
+            } else if (downBtn != null && downBtn.kind == K_GROUP) {
                 longFired = true;
-                group(downGroup, true);
+                group(downBtn.arg, true);
+            } else if (downBtn != null && downBtn.kind == K_LOAD) {
+                longFired = true;
+                if ((misc & ThorBridge.M_QUICK_SAVE) != 0) {
+                    ThorBridge.push(ThorBridge.CMD_QUICK_LOAD, 0, 0, 0);
+                    say(str(R.string.deck_act_loading));
+                }
             }
         }
     };
@@ -122,8 +166,18 @@ public class ThorDeck extends View {
         super(context);
         Ui.init(context);
         bmpPaint.setFilterBitmap(false);
+        glyphPaint.setFilterBitmap(false);
         radarPaint.setFilterBitmap(true);
         setBackgroundColor(Ui.BG);
+        for (int i = 0; i < HOTS.length; i++) {
+            bHot[i] = add(K_HOT, i);
+        }
+    }
+
+    private Btn add(int kind, int arg) {
+        Btn b = new Btn(kind, arg);
+        btns.add(b);
+        return b;
     }
 
     private final Map<Integer, String> strings = new HashMap<>();
@@ -168,6 +222,7 @@ public class ThorDeck extends View {
                 names.clear();
                 radarSerial = -1;
                 radarBitmap = null;
+                radarWasOn = false;
                 for (int i = 0; i < 4; i++) {
                     tabScroll[i] = 0;
                 }
@@ -176,7 +231,13 @@ public class ThorDeck extends View {
             powerOut = snap[B + ThorBridge.H_POWER_OUT];
             powerDrain = snap[B + ThorBridge.H_POWER_DRAIN];
             flags = snap[B + ThorBridge.H_FLAGS];
-            faction = snap[B + ThorBridge.H_FACTION];
+            int side = snap[B + ThorBridge.H_FACTION];
+            if (side != faction) { // the art differs per side
+                faction = side;
+                cameos.clear();
+                noCameo.clear();
+                layout();
+            }
             activeTab = Math.max(0, Math.min(3, snap[B + ThorBridge.H_TAB]));
             tabs = snap[B + ThorBridge.H_TABS];
             radarW = snap[B + ThorBridge.H_RADAR_W];
@@ -185,6 +246,9 @@ public class ThorDeck extends View {
             viewY = snap[B + ThorBridge.H_VIEW_Y];
             viewW = snap[B + ThorBridge.H_VIEW_W];
             viewH = snap[B + ThorBridge.H_VIEW_H];
+            speed = snap[B + ThorBridge.H_SPEED];
+            selected = snap[B + ThorBridge.H_SELECTED];
+            misc = snap[B + ThorBridge.H_MISC];
             int itemCount = snap[B + ThorBridge.H_ITEMS], superCount = snap[B + ThorBridge.H_SUPERS];
             int serial = snap[B + ThorBridge.H_RADAR_SERIAL];
             items.clear();
@@ -252,6 +316,7 @@ public class ThorDeck extends View {
         radarBitmap.setPixels(radarPx, 0, w, 0, 0, w, h);
     }
 
+    /** A picture from the player's game files (cameo, sidebar art, font glyph); null = none (yet). */
     private Bitmap cameo(int key) {
         Bitmap b = cameos.get(key);
         if (b != null || noCameo.containsKey(key)) {
@@ -275,6 +340,10 @@ public class ThorDeck extends View {
         return b;
     }
 
+    private Bitmap art(int piece, int frame) {
+        return cameo((ThorBridge.KIND_CHROME << 16) | (piece << 8) | frame);
+    }
+
     private String name(int key) {
         String n = names.get(key);
         if (n == null || n.isEmpty()) {
@@ -292,49 +361,58 @@ public class ThorDeck extends View {
 
     // ------------------------------------------------------------------ layout
 
+    private boolean sov() {
+        return faction != 0; // Yuri shares the Soviet geometry
+    }
+
+    /** The icon colour of the side's command bar art. */
+    private int accent() {
+        return faction == 2 ? 0xFFC9A0FF : faction == 1 ? 0xFFF2B32E : 0xFF6EB4FF;
+    }
+
     @Override
     protected void onSizeChanged(int w, int h, int oldw, int oldh) {
         s = Math.min(w / 1240f, h / 1080f);
-        float m = 28 * s;
-        header.set(0, 0, w, 116 * s);
-        float top = header.bottom + 24 * s;
-        float leftW = 520 * s;
-        radarPanel.set(m, top, m + leftW, top + 400 * s);
-        radarArea.set(radarPanel.left + 16 * s, radarPanel.top + 48 * s, radarPanel.right - 16 * s,
-                radarPanel.bottom - 16 * s);
-        float by = radarPanel.bottom + 18 * s, bh = 96 * s, gap = 12 * s;
-        float bw = (leftW - 3 * gap) / 4f;
-        btnRepair.set(m, by, m + bw, by + bh);
-        btnSell.set(btnRepair.right + gap, by, btnRepair.right + gap + bw, by + bh);
-        btnMenu.set(btnSell.right + gap, by, btnSell.right + gap + bw, by + bh);
-        btnZoom.set(btnMenu.right + gap, by, m + leftW, by + bh);
-        groupPanel.set(m, btnRepair.bottom + 18 * s, m + leftW, btnRepair.bottom + 146 * s);
-        float gw = (leftW - 24 * s - 4 * 8 * s) / 5f;
-        for (int i = 0; i < 5; i++) {
-            float l = m + 12 * s + i * (gw + 8 * s);
-            groupRect[i].set(l, groupPanel.top + 44 * s, l + gw, groupPanel.bottom - 12 * s);
-        }
-        superPanel.set(m, groupPanel.bottom + 18 * s, m + leftW, h - m);
-
-        float colX = radarPanel.right + 24 * s, colR = w - m;
-        float tgap = 10 * s, tw = (colR - colX - 3 * tgap) / 4f;
-        for (int i = 0; i < 4; i++) {
-            float l = colX + i * (tw + tgap);
-            tabRect[i].set(l, top, l + tw, top + 84 * s);
-        }
-        gridPanel.set(colX, tabRect[0].bottom + 14 * s, colR, h - m);
-        gridArea.set(gridPanel.left + 12 * s, gridPanel.top + 52 * s, gridPanel.right - 12 * s, gridPanel.bottom - 12 * s);
-
-        microLabel = Ui.label(15 * s, Ui.TEXT_3);
-        microLabelDim = Ui.label(13 * s, Ui.TEXT_3);
-        monoBig = Ui.text(Ui.monoBold(), 46 * s, Ui.TEXT);
-        monoMid = Ui.text(Ui.mono(), 24 * s, Ui.TEXT_2);
-        monoSmall = Ui.text(Ui.mono(), 20 * s, Ui.TEXT_2);
+        k = w / AW;
+        ah = h / k;
         bodyDim = Ui.text(Ui.inter(), 21 * s, Ui.TEXT_2);
-        small = Ui.text(Ui.interMedium(), 17 * s, Ui.TEXT_2);
-        badgeText = Ui.label(14 * s, Ui.BG);
-        badgeText.setTypeface(Ui.interBold());
-        badgeText.setLetterSpacing(0.14f);
+        layout();
+    }
+
+    private void layout() {
+        boolean sov = sov();
+        // Sidebar head: the engine's SidebarLayout numbers per side style.
+        bMenu.r.set(sov ? 14 : 11, sov ? 21 : 20, (sov ? 14 : 11) + 72, (sov ? 21 : 20) + (sov ? 22 : 18));
+        bDiplo.r.set(sov ? 86 : 83, bMenu.r.top, (sov ? 86 : 83) + 72, bMenu.r.bottom);
+        radarView.set(16, 49, 156, 157);
+        if (sov) {
+            bRepair.r.set(33, 165, 85, 197);
+            bSell.r.set(85, 165, 137, 197);
+        } else {
+            bRepair.r.set(20, 166, 84, 197);
+            bSell.r.set(84, 166, 148, 197);
+        }
+        for (int i = 0; i < 4; i++) {
+            float x = sov ? 20 + 32 * i : 26 + 29 * i;
+            bTab[i].r.set(x, 197, x + (sov ? 32 : 28), 197 + (sov ? 28 : 27));
+        }
+        bZoom.r.set(21, ah - 31, 146, ah - 6);
+        stripArea.set(SB, 0, AW, STRIP_ROWS * ROW);
+        for (int i = 0; i < bHot.length; i++) {
+            cell(bHot[i].r, i / 5, i % 5);
+        }
+        for (int i = 0; i < 5; i++) {
+            cell(bGroup[i].r, 2, i);
+        }
+        cell(bSlower.r, 3, 0);
+        cell(bSpeed.r, 3, 1);
+        cell(bFaster.r, 3, 2);
+        cell(bSave.r, 3, 3);
+        cell(bLoad.r, 3, 4);
+    }
+
+    private static void cell(RectF r, int row, int col) {
+        r.set(BAR_X + col * BTN_W, BAR_Y + row * BTN_H, BAR_X + (col + 1) * BTN_W, BAR_Y + (row + 1) * BTN_H);
     }
 
     // ------------------------------------------------------------------ drawing
@@ -343,35 +421,33 @@ public class ThorDeck extends View {
     protected void onDraw(Canvas c) {
         super.onDraw(c);
         int w = getWidth(), h = getHeight();
-        Ui.grid(c, w, h, Ui.GRID * s, paint);
         if (!inGame) {
+            Ui.grid(c, w, h, Ui.GRID * s, paint);
             drawIdle(c, w, h);
             Ui.scanlines(c, w, h, paint);
             return;
         }
-        drawHeader(c, w);
-        drawRadar(c);
-        boolean rep = (flags & ThorBridge.F_REPAIR) != 0, sell = (flags & ThorBridge.F_SELL) != 0;
-        drawButton(c, btnRepair, str(R.string.deck_repair), rep, glyphWrench());
-        drawButton(c, btnSell, str(R.string.deck_sell), sell, glyphDollar());
-        drawButton(c, btnMenu, str(R.string.deck_menu), (flags & ThorBridge.F_PAUSED) != 0, glyphMenu());
-        drawButton(c, btnZoom, "ZOOM " + zoom() + "%", zoom() > 100, glyphZoom());
-        drawGroups(c);
+        c.save();
+        c.scale(k, k);
+        paint.setShader(null);
+        paint.setStyle(Paint.Style.FILL);
+        paint.setColor(0xFF000000);
+        c.drawRect(0, 0, AW, ah, paint);
+        drawHead(c);
         drawSupers(c);
-        for (int i = 0; i < 4; i++) {
-            drawTab(c, i);
-        }
-        drawGrid(c);
+        drawFoot(c);
+        drawStrip(c);
+        drawBar(c);
+        drawStatus(c);
+        c.restore();
         hitItems = new ArrayList<>(items);
         hitSupers = new ArrayList<>(supers);
-        Ui.scanlines(c, w, h, paint);
-        if (flashKey != -1 || flashButton != null) {
-            if (SystemClock.uptimeMillis() - flashAt > 180) {
+        if (flashKey != -1 || flashBtn != null) {
+            if (SystemClock.uptimeMillis() - flashAt > Ui.FLASH_MS) {
                 flashKey = -1;
-                flashButton = null;
-            } else {
-                postInvalidateDelayed(30);
+                flashBtn = null;
             }
+            postInvalidateDelayed(30);
         }
     }
 
@@ -389,71 +465,165 @@ public class ThorDeck extends View {
         c.drawText(hint, cx - bodyDim.measureText(hint) / 2, cy + 200 * s, bodyDim);
     }
 
-    private void drawHeader(Canvas c, int w) {
-        int acc = Ui.accent(faction);
+    private boolean pressed(Btn b) {
+        return downBtn == b || flashBtn == b;
+    }
+
+    /** One piece of the sidebar art at (x, y); without art a steel plate of the piece's size. */
+    private void piece(Canvas c, int piece, int frame, float x, float y, float w, float h) {
+        Bitmap b = art(piece, frame);
+        if (b == null && frame != 0) {
+            b = art(piece, 0);
+        }
+        if (b != null) {
+            c.drawBitmap(b, x, y, bmpPaint);
+        } else if (noCameo.containsKey((ThorBridge.KIND_CHROME << 16) | (piece << 8))) {
+            plate(c, x, y, x + w, y + h, frame == 1);
+        }
+    }
+
+    /** Fallback look without the game's art: a bevelled steel plate in the side's colour. */
+    private void plate(Canvas c, float l, float t, float r, float b, boolean lit) {
+        int acc = accent();
         paint.setStyle(Paint.Style.FILL);
+        paint.setShader(new LinearGradient(0, t, 0, b, lit ? Ui.alpha(acc, 1f) : 0xFF5A616B, lit ? 0xFF20242A : 0xFF23272D,
+                Shader.TileMode.CLAMP));
+        c.drawRect(l, t, r, b, paint);
         paint.setShader(null);
-        paint.setColor(Ui.BG_2);
-        c.drawRect(header, paint);
-        paint.setColor(Ui.LINE);
-        c.drawRect(0, header.bottom - 1, w, header.bottom, paint);
-        paint.setColor(Ui.alpha(acc, 0.85f));
-        c.drawRect(0, 0, w, 3 * s, paint);
+        paint.setColor(0x66FFFFFF);
+        c.drawRect(l, t, r, t + 0.6f, paint);
+        c.drawRect(l, t, l + 0.6f, b, paint);
+        paint.setColor(0xAA000000);
+        c.drawRect(l, b - 0.6f, r, b, paint);
+        c.drawRect(r - 0.6f, t, r, b, paint);
+    }
 
-        float m = 28 * s;
-        c.drawText(str(R.string.deck_credits), m, 40 * s, microLabel);
-        String cr = String.format(Locale.ROOT, "%,d", Math.round(shownCredits)).replace(',', ' ');
-        c.drawText("$", m, 92 * s, Ui.text(Ui.monoBold(), 46 * s, acc));
-        c.drawText(cr, m + 34 * s, 92 * s, monoBig);
+    private boolean hasArt(int piece) {
+        return !noCameo.containsKey((ThorBridge.KIND_CHROME << 16) | (piece << 8));
+    }
 
-        // POWER: output bar with a drain marker, red on low power
-        float px = 340 * s, pw = 470 * s;
-        c.drawText(str(R.string.deck_power), px, 40 * s, microLabel);
-        boolean low = powerDrain > powerOut;
-        String pv = powerOut + " / " + powerDrain;
-        monoMid.setColor(low ? Ui.RED : Ui.TEXT_2);
-        c.drawText(pv, px + pw - monoMid.measureText(pv), 40 * s, monoMid);
-        int max = Math.max(1, Math.max(powerOut, powerDrain));
-        RectF bar = new RectF(px, 62 * s, px + pw, 74 * s);
-        if (low) {
-            Ui.bar(c, bar, powerOut / (float) max, Ui.RED, Ui.RED_2, paint);
-        } else {
-            Ui.bar(c, bar, powerOut / (float) max, Ui.GREEN, 0xFF8FE3B4, paint);
+    // ---- text in the game's HUD font (fallback: Inter)
+
+    private float glyphs(Canvas c, String t, float x, float y, float sc, int color) {
+        float w = 0;
+        float cellH = 16;
+        if (c != null) {
+            PorterDuffColorFilter f = tints.get(color);
+            if (f == null) {
+                f = new PorterDuffColorFilter(color, PorterDuff.Mode.MULTIPLY);
+                tints.put(color, f);
+            }
+            glyphPaint.setColorFilter(f);
         }
-        float dx = px + pw * Math.min(1f, powerDrain / (float) max);
-        paint.setColor(low ? Ui.RED : Ui.TEXT);
-        c.drawRect(dx - 1.5f * s, 54 * s, dx + 1.5f * s, 82 * s, paint);
-        Paint lowLabel = low ? Ui.label(13 * s, Ui.RED) : microLabelDim;
-        c.drawText(low ? str(R.string.deck_low_power) : str(R.string.deck_output_drain), px, 104 * s, lowLabel);
-
-        // side + mode chip
-        String side = faction == 2 ? str(R.string.deck_side_yuri)
-                : faction == 1 ? str(R.string.deck_side_soviet) : str(R.string.deck_side_allies);
-        String mode;
-        boolean modal = true;
-        if ((flags & ThorBridge.F_PLACING) != 0) {
-            mode = str(R.string.deck_mode_place);
-        } else if ((flags & ThorBridge.F_TARGETING) != 0) {
-            mode = str(R.string.deck_mode_target);
-        } else if ((flags & ThorBridge.F_REPAIR) != 0) {
-            mode = str(R.string.deck_mode_repair);
-        } else if ((flags & ThorBridge.F_SELL) != 0) {
-            mode = str(R.string.deck_mode_sell);
-        } else if ((flags & ThorBridge.F_PAUSED) != 0) {
-            mode = str(R.string.deck_mode_paused);
-        } else {
-            modal = false;
-            mode = str(R.string.deck_online);
+        for (int i = 0; i < t.length(); i++) {
+            char ch = t.charAt(i);
+            if (ch == ' ') {
+                w += cellH / 2 * sc;
+                continue;
+            }
+            int key = (ThorBridge.KIND_GLYPH << 16) | (ch & 0xFF);
+            Bitmap g = ch < 128 ? cameo(key) : null;
+            if (g == null) {
+                if (ch >= 128 || noCameo.containsKey(key)) {
+                    return -1; // not in the game font
+                }
+                w += cellH / 2 * sc; // on its way
+                continue;
+            }
+            if (c != null) {
+                dst.set(x + w, y, x + w + g.getWidth() * sc, y + g.getHeight() * sc);
+                c.drawBitmap(g, null, dst, glyphPaint);
+            }
+            w += g.getWidth() * sc;
         }
-        Paint ml = Ui.label(15 * s, modal ? acc : Ui.TEXT_2);
-        float rx = w - m;
-        float tw = Math.max(ml.measureText(mode), microLabel.measureText(side));
-        RectF chip = new RectF(rx - tw - 60 * s, 24 * s, rx, 92 * s);
-        Ui.panel(c, chip, Ui.RADIUS_SM * s, Ui.PANEL, modal ? acc : Ui.LINE, paint);
-        paint.setColor(modal ? acc : Ui.GREEN);
-        c.drawCircle(chip.left + 22 * s, chip.top + 25 * s, 5 * s, paint);
-        c.drawText(side, chip.left + 38 * s, chip.top + 30 * s, microLabel);
-        c.drawText(mode, chip.left + 38 * s, chip.top + 56 * s, ml);
+        return w;
+    }
+
+    /**
+     * Text in the game's HUD font (16 px cell, the letters sit in rows 2..11) at scale sc, cell top at y;
+     * align -1 left (x), 0 centred on x, 1 right (x). Text the font cannot spell is drawn in Inter.
+     */
+    private float text(Canvas c, String t, float x, float y, float sc, int color, int align, boolean shadow) {
+        float w = glyphs(null, t, 0, 0, sc, color);
+        if (w >= 0) {
+            float l = Math.round(align < 0 ? x : align == 0 ? x - w / 2 : x - w);
+            if (shadow) { // on a picture: a dark plate keeps the thin strokes readable
+                paint.setColor(0xB0000000);
+                c.drawRect(l - 2, y + sc, l + w + 1, y + 13 * sc, paint);
+            }
+            glyphs(c, t, l, y, sc, color);
+            return w;
+        }
+        textPaint.setTypeface(Ui.interBold());
+        textPaint.setTextSize(10.5f * sc);
+        textPaint.setLetterSpacing(0f);
+        w = textPaint.measureText(t);
+        float l = align < 0 ? x : align == 0 ? x - w / 2 : x - w;
+        if (shadow) {
+            textPaint.setColor(0xFF000000);
+            c.drawText(t, l + 0.7f, y + 11.5f * sc + 0.7f, textPaint);
+        }
+        textPaint.setColor(color);
+        c.drawText(t, l, y + 11.5f * sc, textPaint);
+        return w;
+    }
+
+    /** Small caption (Inter, any language). */
+    private void caption(Canvas c, String t, float cx, float baseline, float size, int color, float maxW) {
+        textPaint.setTypeface(Ui.interBold());
+        textPaint.setTextSize(size);
+        textPaint.setLetterSpacing(0.04f);
+        textPaint.setColor(color);
+        float w = textPaint.measureText(t);
+        if (w > maxW) {
+            textPaint.setTextSize(size * maxW / w);
+            w = maxW;
+        }
+        c.drawText(t, cx - w / 2, baseline, textPaint);
+    }
+
+    // ---- sidebar head: credits, options / diplomacy, radar, repair / sell, tabs
+
+    private void drawHead(Canvas c) {
+        piece(c, ThorBridge.CH_CREDITS, 0, 0, 0, SB, 16);
+        int cc = faction == 0 ? 0xFFA4D2FF : faction == 1 ? 0xFFFFFF00 : 0xFFE2C4FF;
+        text(c, String.valueOf(Math.round(shownCredits)), 84, 1, 1, cc, 0, false);
+
+        piece(c, ThorBridge.CH_TOP, 0, 0, 16, SB, 32);
+        boolean paused = (flags & ThorBridge.F_PAUSED) != 0;
+        capButton(c, bMenu, ThorBridge.CH_OPTBTN, pressed(bMenu) || paused, str(R.string.deck_menu));
+        capButton(c, bDiplo, ThorBridge.CH_DIPLOBTN, pressed(bDiplo),
+                str((misc & ThorBridge.M_CAMPAIGN) != 0 ? R.string.deck_briefing : R.string.deck_allies));
+
+        drawRadar(c);
+
+        piece(c, ThorBridge.CH_SIDE1, 0, 0, 158, SB, 69);
+        boolean rep = (flags & ThorBridge.F_REPAIR) != 0, sell = (flags & ThorBridge.F_SELL) != 0;
+        capButton(c, bRepair, ThorBridge.CH_REPAIR, rep || pressed(bRepair), str(R.string.deck_repair));
+        capButton(c, bSell, ThorBridge.CH_SELL, sell || pressed(bSell), str(R.string.deck_sell));
+        boolean blink = (SystemClock.uptimeMillis() / 400) % 2 == 0;
+        for (int i = 0; i < 4; i++) {
+            boolean has = (tabs & (1 << i)) != 0, active = i == activeTab, ready = (tabs & (1 << (4 + i))) != 0;
+            int fr = !has ? 2 : ready && blink ? (active ? 4 : 3) : active ? 1 : 0;
+            RectF r = bTab[i].r;
+            if (hasArt(ThorBridge.CH_TAB0 + i)) {
+                piece(c, ThorBridge.CH_TAB0 + i, fr, r.left, r.top, r.width(), r.height());
+            } else {
+                plate(c, r.left, r.top, r.right, r.bottom, active);
+                caption(c, str(TAB_LABELS[i]).substring(0, 1), r.centerX(), r.centerY() + 4, 11, 0xFFFFFFFF, r.width());
+            }
+        }
+    }
+
+    /** A sidebar button with its own art (frame 1 = pressed / armed); without art a labelled plate. */
+    private void capButton(Canvas c, Btn b, int piece, boolean on, String label) {
+        RectF r = b.r;
+        if (hasArt(piece)) {
+            piece(c, piece, on ? 1 : 0, r.left, r.top, r.width(), r.height());
+        } else {
+            plate(c, r.left, r.top, r.right, r.bottom, on);
+            caption(c, label, r.centerX(), r.centerY() + 2.4f, 6.5f, 0xFFFFFFFF, r.width() - 4);
+        }
     }
 
     private boolean radarOnline() {
@@ -461,134 +631,197 @@ public class ThorDeck extends View {
     }
 
     private void drawRadar(Canvas c) {
-        int acc = Ui.accent(faction);
-        Ui.panel(c, radarPanel, Ui.RADIUS * s, Ui.PANEL, Ui.LINE, paint);
-        c.drawText(str(R.string.deck_radar), radarPanel.left + 16 * s, radarPanel.top + 32 * s, microLabel);
-        boolean active = radarOnline();
-        String st = active ? str(R.string.deck_online) : str(R.string.deck_offline);
-        Paint sp = Ui.label(13 * s, active ? Ui.GREEN : Ui.TEXT_3);
-        c.drawText(st, radarPanel.right - 16 * s - sp.measureText(st), radarPanel.top + 32 * s, sp);
-        paint.setColor(0xFF000000);
-        c.drawRoundRect(radarArea, Ui.RADIUS_SM * s, Ui.RADIUS_SM * s, paint);
-        if (!active) {
-            // "No signal": faint grid, slow sweep, label -- no radar station or no power.
-            c.save();
-            c.clipRect(radarArea);
-            paint.setStyle(Paint.Style.STROKE);
-            paint.setStrokeWidth(1f);
-            paint.setColor(0x14FFFFFF);
-            float step = radarArea.width() / 12f;
-            for (float gx = radarArea.left + step; gx < radarArea.right; gx += step) {
-                c.drawLine(gx, radarArea.top, gx, radarArea.bottom, paint);
+        boolean on = radarOnline();
+        long now = SystemClock.uptimeMillis();
+        if (on && !radarWasOn) {
+            radarOnAt = now;
+        }
+        radarWasOn = on;
+        int frames = (misc >> 8) & 0xFF;
+        if (!on) {
+            piece(c, ThorBridge.CH_RADAR, 0, 0, 48, SB, 110); // the side's logo
+            if (!hasArt(ThorBridge.CH_RADAR)) {
+                paint.setColor(0xFF000000);
+                c.drawRect(radarView, paint);
+                caption(c, str(R.string.deck_no_signal), radarView.centerX(), radarView.centerY(), 8, 0xFFA7ABB3, 130);
             }
-            for (float gy = radarArea.top + step; gy < radarArea.bottom; gy += step) {
-                c.drawLine(radarArea.left, gy, radarArea.right, gy, paint);
-            }
-            float phase = (SystemClock.uptimeMillis() % 4000) / 4000f;
-            float sy = radarArea.top + radarArea.height() * phase;
-            paint.setStyle(Paint.Style.FILL);
-            paint.setShader(new LinearGradient(0, sy - 60 * s, 0, sy, 0, Ui.alpha(acc, 0.10f), Shader.TileMode.CLAMP));
-            c.drawRect(radarArea.left, sy - 60 * s, radarArea.right, sy, paint);
-            paint.setShader(null);
-            c.restore();
-            Paint ns = Ui.label(22 * s, Ui.TEXT_2);
-            ns.setTypeface(Ui.interBold());
-            String t1 = str(R.string.deck_no_signal);
-            float t1w = ns.measureText(t1) - ns.getLetterSpacing() * ns.getTextSize();
-            c.drawText(t1, radarArea.centerX() - t1w / 2, radarArea.centerY(), ns);
-            String t = (flags & ThorBridge.F_RADAR_BUILDING) != 0 ? str(R.string.deck_radar_power_hint)
-                    : str(R.string.deck_radar_hint);
-            c.drawText(t, radarArea.centerX() - bodyDim.measureText(t) / 2, radarArea.centerY() + 44 * s, bodyDim);
-            postInvalidateDelayed(50);
             return;
         }
-        RectF dst = radarDst();
-        c.drawBitmap(radarBitmap, null, dst, radarPaint);
-        float kx = dst.width() / radarW, ky = dst.height() / radarH;
-        RectF vr = new RectF(dst.left + viewX * kx, dst.top + viewY * ky, dst.left + (viewX + viewW) * kx,
-                dst.top + (viewY + viewH) * ky);
+        int boot = frames > 2 ? 1 + (int) ((now - radarOnAt) / 45) : frames; // the art's power-up frames
+        if (boot < frames - 1) {
+            piece(c, ThorBridge.CH_RADAR, boot, 0, 48, SB, 110);
+            postInvalidateDelayed(40);
+            return;
+        }
+        if (frames > 1) {
+            piece(c, ThorBridge.CH_RADAR, frames - 1, 0, 48, SB, 110);
+        } else {
+            plate(c, 0, 48, SB, 158, false);
+        }
+        paint.setColor(0xFF000000);
+        c.drawRect(radarView, paint);
+        RectF d = radarDst();
+        c.drawBitmap(radarBitmap, null, d, radarPaint);
+        float kx = d.width() / radarW, ky = d.height() / radarH;
         c.save();
-        c.clipRect(radarArea);
+        c.clipRect(radarView);
         paint.setStyle(Paint.Style.STROKE);
-        paint.setStrokeWidth(2f * s);
-        paint.setColor(acc);
-        c.drawRect(vr, paint);
+        paint.setStrokeWidth(0.8f);
+        paint.setColor(0xFFFFFFFF);
+        c.drawRect(d.left + viewX * kx, d.top + viewY * ky, d.left + (viewX + viewW) * kx, d.top + (viewY + viewH) * ky,
+                paint);
         paint.setStyle(Paint.Style.FILL);
         c.restore();
     }
 
-    /** Radar picture at its aspect ratio inside the radar area. */
+    /** Radar picture at its aspect ratio inside the radar screen. */
     private RectF radarDst() {
-        float k = Math.min(radarArea.width() / Math.max(1, radarW), radarArea.height() / Math.max(1, radarH));
-        float w = radarW * k, h = radarH * k;
-        float l = radarArea.centerX() - w / 2, t = radarArea.centerY() - h / 2;
+        float f = Math.min(radarView.width() / Math.max(1, radarW), radarView.height() / Math.max(1, radarH));
+        float w = radarW * f, h = radarH * f;
+        float l = radarView.centerX() - w / 2, t = radarView.centerY() - h / 2;
         return new RectF(l, t, l + w, t + h);
     }
 
-    private void drawButton(Canvas c, RectF r, String label, boolean active, Path glyph) {
-        int acc = Ui.accent(faction);
-        boolean flash = flashButton == r;
-        int fill = active ? Ui.alpha(acc, 0.16f) : (flash ? Ui.PANEL_2 : Ui.PANEL);
-        Ui.panel(c, r, Ui.RADIUS * s, fill, active || flash ? acc : Ui.LINE, paint);
-        int col = active ? acc : Ui.TEXT;
-        drawGlyph(c, glyph, r.centerX() - 14 * s, r.top + 16 * s, col);
-        Paint lp = Ui.label(15 * s, col);
-        float tw = lp.measureText(label) - lp.getLetterSpacing() * lp.getTextSize();
-        if (tw > r.width() - 12 * s) { // four buttons in a row: long words (REPARIEREN) shrink to fit
-            lp.setTextSize(lp.getTextSize() * (r.width() - 12 * s) / tw);
-            tw = lp.measureText(label) - lp.getLetterSpacing() * lp.getTextSize();
+    // ---- power bar: the sidebar's pip column (PowerClass rules, engine draw_sidebar)
+
+    private void drawPips(Canvas c, float x, float top, float height) {
+        int total = Math.max(1, (int) ((height + 3) / 3));
+        int totalPower = powerOut + powerDrain;
+        int inner = Math.max(0, Math.min(total - 1, (int) (total * 400.0 / (totalPower + 400.0))));
+        int used = total - inner;
+        if (totalPower > 0 && used < 1) {
+            used = 1;
         }
-        c.drawText(label, r.centerX() - tw / 2, r.bottom - 16 * s, lp);
+        int surplus = powerOut - powerDrain;
+        int yellowAmt = surplus >= 0 ? Math.min(surplus, 100) : 0, greenAmt = surplus >= 0 ? surplus - yellowAmt : 0;
+        int denom = powerDrain + yellowAmt + greenAmt;
+        int red = denom > 0 ? Math.round((float) used * powerDrain / denom) : 0;
+        int yellow = denom > 0 ? Math.round((float) used * yellowAmt / denom) : 0;
+        boolean outage = powerDrain > powerOut, blink = (SystemClock.uptimeMillis() / 200) % 2 == 0;
+        float pw = sov() ? 16 : 12;
+        boolean have = hasArt(ThorBridge.CH_POWERP);
+        for (int i = 0; i < total; i++) {
+            int frame = i < red ? 3 : i < red + yellow ? 2 : i < used ? 1 : 0;
+            if (outage && i < used && blink) {
+                frame = 4;
+            }
+            float py = top + height - (i + 1) * 3;
+            if (have) {
+                Bitmap b = art(ThorBridge.CH_POWERP, frame);
+                if (b != null) {
+                    c.drawBitmap(b, x, py, bmpPaint);
+                }
+            } else {
+                paint.setColor(frame == 0 ? 0xFF20242A : frame == 1 ? 0xFF35C24A : frame == 2 ? 0xFFE6D23A
+                        : frame == 3 ? 0xFFD2362E : 0xFFFFFFFF);
+                c.drawRect(x, py, x + pw, py + 2, paint);
+            }
+        }
     }
 
-    private void drawGlyph(Canvas c, Path glyph, float x, float y, int color) {
+    /** One row of the cameo strip, cols sockets wide: side2.shp cut into left edge, socket, right edge. */
+    private void stripRow(Canvas c, float x, float y, int cols) {
+        Bitmap b = art(ThorBridge.CH_SIDE2, 0);
+        if (b == null || b.getWidth() < 168) {
+            if (!hasArt(ThorBridge.CH_SIDE2)) {
+                plate(c, x, y, x + 42 + 63 * cols, y + ROW, false);
+                paint.setColor(0xFF000000);
+                for (int i = 0; i < cols; i++) {
+                    c.drawRect(x + 22 + 63 * i, y + 1, x + 82 + 63 * i, y + 49, paint);
+                }
+            }
+            return;
+        }
+        if (cols == 2) {
+            c.drawBitmap(b, x, y, bmpPaint);
+            return;
+        }
+        int bh = b.getHeight();
+        src.set(0, 0, 22, bh);
+        dst.set(x, y, x + 22, y + bh);
+        c.drawBitmap(b, src, dst, bmpPaint);
+        src.set(22, 0, 85, bh);
+        for (int i = 0; i < cols; i++) {
+            dst.set(x + 22 + 63 * i, y, x + 85 + 63 * i, y + bh);
+            c.drawBitmap(b, src, dst, bmpPaint);
+        }
+        src.set(148, 0, 168, bh);
+        dst.set(x + 22 + 63 * cols, y, x + 42 + 63 * cols, y + bh);
+        c.drawBitmap(b, src, dst, bmpPaint);
+    }
+
+    // ---- left strip: four superweapon sockets, as the sidebar shows them
+
+    private void drawSupers(Canvas c) {
+        stripRow(c, 0, 227, 2);
+        stripRow(c, 0, 277, 2);
+        drawPips(c, sov() ? 0 : 5, 227, 100);
+        boolean blink = (SystemClock.uptimeMillis() / 400) % 2 == 0;
+        int n = 0;
+        for (Super sw : supers) {
+            if (n >= 4) {
+                sw.bounds.setEmpty();
+                continue;
+            }
+            float l = 22 + (n % 2) * 63, t = 228 + (n / 2) * 50;
+            n++;
+            sw.bounds.set(l, t, l + 60, t + 48);
+            Bitmap b = cameo(sw.key);
+            if (b != null) {
+                c.drawBitmap(b, null, sw.bounds, bmpPaint);
+            } else {
+                paint.setColor(0xFF181B20);
+                c.drawRect(sw.bounds, paint);
+                caption(c, superName(sw.key & 0xFFFF), sw.bounds.centerX(), sw.bounds.bottom - 5, 6, 0xFFFFFFFF, 56);
+            }
+            if (sw.ready != 0) {
+                if (blink) {
+                    text(c, str(R.string.deck_ready), sw.bounds.centerX(), t + 1, 1, 0xFFFFFFFF, 0, true);
+                }
+            } else {
+                clock(c, sw.bounds, sw.progress / 1000f, 0x96000000);
+                text(c, String.format(Locale.ROOT, "%d:%02d", sw.seconds / 60, sw.seconds % 60), sw.bounds.centerX(),
+                        t + 15, 1, 0xFFFFFFFF, 0, true);
+            }
+            if (flashKey == sw.key) {
+                paint.setColor(0x40FFFFFF);
+                c.drawRect(sw.bounds, paint);
+            }
+        }
+    }
+
+    /** The sidebar's build clock: the part still to do stays dark, clockwise from 12 o'clock. */
+    private void clock(Canvas c, RectF r, float done, int color) {
         c.save();
-        c.translate(x, y);
-        c.scale(s, s);
-        paint.setStyle(Paint.Style.STROKE);
-        paint.setStrokeWidth(2.4f);
-        paint.setStrokeCap(Paint.Cap.ROUND);
-        paint.setStrokeJoin(Paint.Join.ROUND);
+        c.clipRect(r);
+        float rad = (float) Math.hypot(r.width(), r.height());
+        dst.set(r.centerX() - rad, r.centerY() - rad, r.centerX() + rad, r.centerY() + rad);
         paint.setColor(color);
-        c.drawPath(glyph, paint);
+        c.drawArc(dst, -90 + 360f * done, 360f * (1 - done), true, paint);
         c.restore();
-        paint.setStyle(Paint.Style.FILL);
     }
 
-    // Own glyphs on a 28x28 grid.
-    private static Path glyphWrench() {
-        Path p = new Path();
-        p.moveTo(4, 28);
-        p.lineTo(17, 15);
-        p.addCircle(22, 10, 7, Path.Direction.CW);
-        return p;
-    }
-
-    private static Path glyphDollar() {
-        Path p = new Path();
-        p.moveTo(22, 7);
-        p.lineTo(10, 7);
-        p.quadTo(4, 7, 4, 12);
-        p.quadTo(4, 16, 10, 16);
-        p.lineTo(18, 16);
-        p.quadTo(24, 16, 24, 21);
-        p.quadTo(24, 26, 18, 26);
-        p.lineTo(5, 26);
-        p.moveTo(14, 2);
-        p.lineTo(14, 31);
-        return p;
-    }
-
-    private static Path glyphZoom() {
-        Path p = new Path();
-        p.addCircle(12, 12, 8, Path.Direction.CW);
-        p.moveTo(18, 18);
-        p.lineTo(26, 26);
-        p.moveTo(8, 12);
-        p.lineTo(16, 12);
-        p.moveTo(12, 8);
-        p.lineTo(12, 16);
-        return p;
+    private void drawFoot(Canvas c) {
+        Bitmap s3 = art(ThorBridge.CH_SIDE3, 0);
+        float y = 327;
+        if (s3 != null) {
+            c.drawBitmap(s3, 0, y, bmpPaint);
+            y += s3.getHeight();
+        } else if (!hasArt(ThorBridge.CH_SIDE3)) {
+            plate(c, 0, y, SB, ah, false);
+        }
+        Bitmap ad = art(ThorBridge.CH_ADDON, 0);
+        if (ad != null) {
+            c.drawBitmap(ad, 0, y, bmpPaint);
+        }
+        RectF r = bZoom.r;
+        Bitmap plate = art(ThorBridge.CH_SIDEBTTN, pressed(bZoom) ? 1 : 0);
+        if (plate != null) {
+            c.drawBitmap(plate, r.left, r.top, bmpPaint);
+        } else if (!hasArt(ThorBridge.CH_SIDEBTTN)) {
+            plate(c, r.left, r.top, r.right, r.bottom, pressed(bZoom));
+        }
+        text(c, "ZOOM " + zoom() + "%", r.centerX(), r.top + 5, 1, 0xFFFFFFFF, 0, false);
     }
 
     private int zoom() {
@@ -600,336 +833,389 @@ public class ThorDeck extends View {
         int z = zoom() >= 150 ? 100 : zoom() + 25;
         getContext().getSharedPreferences(ThorBridge.PREFS, Context.MODE_PRIVATE).edit().putInt(ThorBridge.PREF_ZOOM, z).apply();
         ThorBridge.zoom(z);
-        lastAction = "ZOOM " + z + "%";
-        lastActionAt = SystemClock.uptimeMillis();
+        say("ZOOM " + z + "%");
     }
 
-    private static Path glyphMenu() {
-        Path p = new Path();
-        p.moveTo(4, 8);
-        p.lineTo(24, 8);
-        p.moveTo(4, 16);
-        p.lineTo(24, 16);
-        p.moveTo(4, 24);
-        p.lineTo(24, 24);
-        return p;
-    }
-
-    private static Path glyphTab(int tab) {
-        Path p = new Path();
-        switch (tab) {
-            case 0: // building: roof + walls + door
-                p.moveTo(3, 13);
-                p.lineTo(14, 4);
-                p.lineTo(25, 13);
-                p.moveTo(6, 11);
-                p.lineTo(6, 26);
-                p.lineTo(22, 26);
-                p.lineTo(22, 11);
-                p.moveTo(12, 26);
-                p.lineTo(12, 18);
-                p.lineTo(16, 18);
-                p.lineTo(16, 26);
-                break;
-            case 1: // defense: shield
-                p.moveTo(14, 3);
-                p.lineTo(24, 7);
-                p.lineTo(24, 14);
-                p.quadTo(24, 22, 14, 27);
-                p.quadTo(4, 22, 4, 14);
-                p.lineTo(4, 7);
-                p.close();
-                p.moveTo(14, 9);
-                p.lineTo(14, 21);
-                break;
-            case 2: // infantry: head + body
-                p.addCircle(14, 7, 4, Path.Direction.CW);
-                p.moveTo(14, 12);
-                p.lineTo(14, 20);
-                p.moveTo(7, 15);
-                p.lineTo(21, 15);
-                p.moveTo(14, 20);
-                p.lineTo(9, 27);
-                p.moveTo(14, 20);
-                p.lineTo(19, 27);
-                break;
-            default: // vehicle: hull, turret, barrel
-                p.addRoundRect(new RectF(3, 16, 25, 25), 3, 3, Path.Direction.CW);
-                p.addRoundRect(new RectF(8, 10, 18, 16), 2, 2, Path.Direction.CW);
-                p.moveTo(18, 13);
-                p.lineTo(27, 11);
-                break;
-        }
-        return p;
-    }
+    // ---- right: the cameo strip, four sockets wide
 
     private static final int[] TAB_LABELS = {R.string.deck_tab_buildings, R.string.deck_tab_defense,
             R.string.deck_tab_infantry, R.string.deck_tab_vehicles};
 
-    private void drawTab(Canvas c, int i) {
-        int acc = Ui.accent(faction);
-        RectF r = tabRect[i];
-        boolean has = (tabs & (1 << i)) != 0;
-        boolean active = i == activeTab;
-        boolean ready = (tabs & (1 << (4 + i))) != 0;
-        int fill = active ? Ui.alpha(acc, 0.16f) : Ui.PANEL;
-        Ui.panel(c, r, Ui.RADIUS * s, fill, active ? acc : Ui.LINE, paint);
-        int col = !has ? Ui.TEXT_3 : active ? acc : Ui.TEXT;
-        drawGlyph(c, glyphTab(i), r.centerX() - 14 * s, r.top + 12 * s, col);
-        Paint lp = Ui.label(13 * s, col);
-        String label = str(TAB_LABELS[i]);
-        float tw = lp.measureText(label) - lp.getLetterSpacing() * lp.getTextSize();
-        c.drawText(label, r.centerX() - tw / 2, r.bottom - 14 * s, lp);
-        if (ready) {
-            boolean on = (SystemClock.uptimeMillis() / 400) % 2 == 0;
-            paint.setColor(on ? Ui.GREEN : Ui.alpha(Ui.GREEN, 0.35f));
-            c.drawCircle(r.right - 14 * s, r.top + 14 * s, 5 * s, paint);
-            postInvalidateDelayed(100);
-        }
-    }
-
-    private void drawGrid(Canvas c) {
-        Ui.panel(c, gridPanel, Ui.RADIUS * s, Ui.PANEL, Ui.LINE, paint);
-        c.drawText(str(TAB_LABELS[activeTab]), gridPanel.left + 16 * s, gridPanel.top + 34 * s, microLabel);
-        String cnt = String.valueOf(items.size());
-        c.drawText(cnt, gridPanel.right - 16 * s - monoSmall.measureText(cnt), gridPanel.top + 34 * s, monoSmall);
-
-        int per = 3;
-        float gap = 12 * s;
-        float cw = (gridArea.width() - (per - 1) * gap) / per;
-        float ch = cw * 0.8f;               // 60x48 cameo aspect
-        float cellH = ch + 44 * s + gap;    // progress bar + name/cost line
-        float y0 = gridArea.top - tabScroll[activeTab];
+    private void drawStrip(Canvas c) {
+        int rows = (items.size() + COLS - 1) / COLS;
+        float maxScroll = Math.max(0, rows * ROW - stripArea.height());
+        tabScroll[activeTab] = Math.max(0, Math.min(tabScroll[activeTab], maxScroll));
+        float scroll = tabScroll[activeTab];
         c.save();
-        c.clipRect(gridArea);
+        c.clipRect(stripArea);
+        int first = (int) (scroll / ROW);
+        for (int r = first; r <= first + (int) STRIP_ROWS; r++) {
+            stripRow(c, SB, r * ROW - scroll, COLS);
+        }
         int n = 0;
         for (Item it : items) {
-            float top = y0 + (n / per) * cellH;
-            float left = gridArea.left + (n % per) * (cw + gap);
-            it.bounds.set(left, top, left + cw, top + ch + 40 * s);
+            float l = SB + 22 + (n % COLS) * 63, t = 1 + (n / COLS) * ROW - scroll;
+            it.bounds.set(l, t, l + 60, t + 48);
             n++;
-            if (top > gridArea.bottom || top + cellH < gridArea.top) {
-                continue;
+            if (t < stripArea.bottom && t + 48 > stripArea.top) {
+                drawTile(c, it);
             }
-            drawTile(c, it, new RectF(left, top, left + cw, top + ch));
         }
         c.restore();
+        drawPips(c, SB + (sov() ? 0 : 5), 0, stripArea.height());
         if (n == 0) {
-            String e = str(R.string.deck_nothing);
-            c.drawText(e, gridArea.centerX() - bodyDim.measureText(e) / 2, gridArea.top + 80 * s, bodyDim);
+            caption(c, str(R.string.deck_nothing), stripArea.centerX(), 30, 8, 0xFFA7ABB3, 240);
         }
-        int rows = (n + per - 1) / per;
-        float maxScroll = Math.max(0, rows * cellH - gridArea.height());
-        tabScroll[activeTab] = Math.max(0, Math.min(tabScroll[activeTab], maxScroll));
-        if (maxScroll > 0) {
-            float th = gridArea.height() * gridArea.height() / (rows * cellH);
-            float ty = gridArea.top + (gridArea.height() - th) * (tabScroll[activeTab] / maxScroll);
-            paint.setColor(Ui.LINE_2);
-            c.drawRoundRect(gridPanel.right - 7 * s, ty, gridPanel.right - 3 * s, ty + th, 2 * s, 2 * s, paint);
+        if (maxScroll > 0) { // more rows below / above
+            float th = stripArea.height() * stripArea.height() / (rows * ROW);
+            float ty = (stripArea.height() - th) * (scroll / maxScroll);
+            paint.setColor(Ui.alpha(accent(), 0.8f));
+            c.drawRect(AW - 3, ty, AW - 1, ty + th, paint);
         }
     }
 
-    private void drawTile(Canvas c, Item it, RectF dst) {
-        int acc = Ui.accent(faction);
-        float r = Ui.RADIUS_SM * s;
-        Path clip = new Path();
-        clip.addRoundRect(dst, r, r, Path.Direction.CW);
-        c.save();
-        c.clipPath(clip);
+    private void drawTile(Canvas c, Item it) {
+        RectF r = it.bounds;
         Bitmap b = cameo(it.key);
         if (b != null) {
-            c.drawBitmap(b, null, dst, bmpPaint);
+            c.drawBitmap(b, null, r, bmpPaint);
         } else {
-            paint.setColor(Ui.PANEL_2);
-            c.drawRect(dst, paint);
-            drawWrapped(c, name(it.key), dst.left + 10 * s, dst.top + 30 * s, dst.width() - 20 * s, bodyDim, 26 * s, 3);
+            paint.setColor(0xFF181B20);
+            c.drawRect(r, paint);
+            caption(c, name(it.key), r.centerX(), r.bottom - 5, 6, 0xFFFFFFFF, 56);
         }
+        boolean busy = it.state == ThorBridge.ST_BUILDING || it.state == ThorBridge.ST_ON_HOLD;
         if (it.state == ThorBridge.ST_DISABLED) {
-            paint.setColor(0xB0000000);
-            c.drawRect(dst, paint);
-        } else if (it.state == ThorBridge.ST_BUILDING || it.state == ThorBridge.ST_ON_HOLD) {
-            // build-progress sweep: the remaining part stays dark, clockwise from 12 o'clock
-            float done = it.progress / 1000f;
-            float rad = (float) Math.hypot(dst.width(), dst.height());
-            RectF oval = new RectF(dst.centerX() - rad, dst.centerY() - rad, dst.centerX() + rad, dst.centerY() + rad);
-            paint.setColor(it.state == ThorBridge.ST_ON_HOLD ? 0xB8000000 : 0x96000000);
-            c.drawArc(oval, -90 + 360f * done, 360f * (1 - done), true, paint);
-        }
-        c.restore();
-
-        boolean flash = flashKey == it.key;
-        boolean strong = flash || it.state == ThorBridge.ST_READY || it.state == ThorBridge.ST_BUILDING;
-        paint.setStyle(Paint.Style.STROKE);
-        paint.setStrokeWidth((strong ? 2.5f : 1f) * s);
-        paint.setColor(flash ? acc : it.state == ThorBridge.ST_READY ? Ui.GREEN
-                : it.state == ThorBridge.ST_BUILDING ? Ui.alpha(acc, 0.8f) : Ui.LINE_2);
-        c.drawRoundRect(dst, r, r, paint);
-        paint.setStyle(Paint.Style.FILL);
-        if (flash) {
-            paint.setColor(Ui.alpha(acc, 0.18f));
-            c.drawRoundRect(dst, r, r, paint);
+            paint.setColor(0xA8000000);
+            c.drawRect(r, paint);
+        } else if (busy) {
+            clock(c, r, it.progress / 1000f, it.state == ThorBridge.ST_ON_HOLD ? 0xB8000000 : 0x96000000);
         }
         if (it.state == ThorBridge.ST_READY) {
-            badge(c, dst, str(R.string.deck_ready), Ui.GREEN);
+            if ((SystemClock.uptimeMillis() / 400) % 2 == 0) {
+                text(c, str(R.string.deck_ready), r.centerX(), r.top + 1, 1, 0xFFFFFFFF, 0, true);
+            }
         } else if (it.state == ThorBridge.ST_ON_HOLD) {
-            badge(c, dst, str(R.string.deck_on_hold), acc);
+            text(c, str(R.string.deck_on_hold), r.centerX(), r.top + 1, 1, 0xFFFFFFFF, 0, true);
         } else if (it.state == ThorBridge.ST_BUILDING) {
-            String pct = (it.progress / 10) + "%";
-            Paint pp = Ui.text(Ui.monoBold(), 24 * s, Ui.TEXT);
-            float tw = pp.measureText(pct);
-            paint.setColor(0xC0000000);
-            c.drawRoundRect(dst.centerX() - tw / 2 - 8 * s, dst.centerY() - 20 * s, dst.centerX() + tw / 2 + 8 * s,
-                    dst.centerY() + 12 * s, 6 * s, 6 * s, paint);
-            c.drawText(pct, dst.centerX() - tw / 2, dst.centerY() + 4 * s, pp);
+            text(c, (it.progress / 10) + "%", r.centerX(), r.top + 15, 1, 0xFFFFFFFF, 0, true);
         }
-        int extra = it.state == ThorBridge.ST_BUILDING || it.state == ThorBridge.ST_ON_HOLD
-                || it.state == ThorBridge.ST_READY ? it.queued - 1 : it.queued;
+        int extra = busy || it.state == ThorBridge.ST_READY ? it.queued - 1 : it.queued;
         if (extra > 0) { // units queued behind the current one
-            String q = "×" + extra;
-            Paint qp = Ui.text(Ui.monoBold(), 20 * s, Ui.TEXT);
-            float tw = qp.measureText(q);
-            paint.setColor(0xD0000000);
-            c.drawRoundRect(dst.right - tw - 18 * s, dst.top + 6 * s, dst.right - 6 * s, dst.top + 32 * s, 6 * s, 6 * s,
-                    paint);
-            c.drawText(q, dst.right - tw - 12 * s, dst.top + 26 * s, qp);
+            text(c, String.valueOf(extra + (busy || it.state == ThorBridge.ST_READY ? 1 : 0)), r.right - 2, r.top - 1, 1,
+                    0xFFFFFFFF, 1, true);
         }
-        if (it.state == ThorBridge.ST_BUILDING || it.state == ThorBridge.ST_ON_HOLD) {
-            RectF bar = new RectF(dst.left, dst.bottom + 6 * s, dst.right, dst.bottom + 10 * s);
-            Ui.bar(c, bar, it.progress / 1000f, acc, Ui.accent2(faction), paint);
+        if (it.cost > 0 && it.state != ThorBridge.ST_READY && it.state != ThorBridge.ST_ON_HOLD) {
+            int col = it.state == ThorBridge.ST_DISABLED ? 0xFF8A8F98 : it.cost > credits ? 0xFFFF6A5A : 0xFFFFE9A0;
+            text(c, "$" + it.cost, r.left + 2, r.top - 1, 1, col, -1, true);
         }
-        // cost (mono, coral when not affordable) + name
-        String cost = it.cost > 0 ? "$" + it.cost : "";
-        monoSmall.setColor(it.state == ThorBridge.ST_DISABLED ? Ui.TEXT_3 : (it.cost > credits ? Ui.CORAL : Ui.TEXT_2));
-        float costW = monoSmall.measureText(cost);
-        c.drawText(cost, dst.right - costW - 2 * s, dst.bottom + 34 * s, monoSmall);
-        monoSmall.setColor(Ui.TEXT_2);
-        if (b != null) {
-            small.setColor(it.state == ThorBridge.ST_DISABLED ? Ui.TEXT_3 : Ui.TEXT_2);
-            String nm = ellipsize(name(it.key), small, dst.width() - costW - 14 * s);
-            c.drawText(nm, dst.left + 2 * s, dst.bottom + 34 * s, small);
+        if (flashKey == it.key) {
+            paint.setColor(0x40FFFFFF);
+            c.drawRect(r, paint);
         }
     }
 
-    private static String ellipsize(String t, Paint p, float maxW) {
-        if (p.measureText(t) <= maxW) {
-            return t;
+    // ---- the advanced command bar, groups, speed, save / load
+
+    private void drawBar(Canvas c) {
+        Bitmap bg = art(ThorBridge.CH_BUTTON0, 0);
+        for (int row = 0; bg != null && row < 4; row++) { // the bar's backdrop to both edges
+            src.set(0, 0, 1, bg.getHeight());
+            dst.set(SB, BAR_Y + row * BTN_H, AW, BAR_Y + (row + 1) * BTN_H);
+            c.drawBitmap(bg, src, dst, bmpPaint);
         }
-        for (int n = t.length() - 1; n > 0; n--) {
-            String c = t.substring(0, n).trim() + "…";
-            if (p.measureText(c) <= maxW) {
-                return c;
+        for (int i = 0; i < bHot.length; i++) {
+            boolean dim = i < 6 && selected == 0 && HOTS[i][0] != ThorBridge.HOT_CHEER; // orders need a selection
+            if (HOTS[i][0] == ThorBridge.HOT_ALERT) {
+                dim = (misc & ThorBridge.M_ALERTS) == 0;
             }
+            cmd(c, bHot[i], HOTS[i][1], i, str(HOTS[i][2]), dim);
         }
-        return "";
-    }
-
-    private void badge(Canvas c, RectF dst, String text, int color) {
-        float tw = badgeText.measureText(text) - badgeText.getLetterSpacing() * badgeText.getTextSize();
-        RectF b = new RectF(dst.left + 6 * s, dst.top + 6 * s, dst.left + 6 * s + tw + 18 * s, dst.top + 32 * s);
-        paint.setColor(color);
-        c.drawRoundRect(b, 6 * s, 6 * s, paint);
-        c.drawText(text, b.left + 9 * s, b.bottom - 8 * s, badgeText);
-    }
-
-    /** Control groups 1-5: number, living members; accent when the whole group is selected. */
-    private void drawGroups(Canvas c) {
-        int acc = Ui.accent(faction);
-        Ui.panel(c, groupPanel, Ui.RADIUS * s, Ui.PANEL, Ui.LINE, paint);
-        c.drawText(str(R.string.deck_groups), groupPanel.left + 16 * s, groupPanel.top + 30 * s, microLabel);
-        String hint = str(R.string.deck_groups_hint);
-        c.drawText(hint, groupPanel.right - 16 * s - microLabelDim.measureText(hint), groupPanel.top + 30 * s,
-                microLabelDim);
         for (int i = 0; i < 5; i++) {
-            RectF r = groupRect[i];
-            int cnt = groupCount[i];
-            boolean sel = cnt > 0 && groupSel[i] == cnt;
-            boolean flash = flashButton == r;
-            Ui.panel(c, r, Ui.RADIUS_SM * s, sel ? Ui.alpha(acc, 0.16f) : flash ? Ui.PANEL_2 : Ui.BG_2,
-                    sel || flash ? acc : Ui.LINE, paint);
-            Paint np = Ui.text(Ui.monoBold(), 30 * s, cnt == 0 ? Ui.TEXT_3 : sel ? acc : Ui.TEXT);
-            c.drawText(String.valueOf(i + 1), r.left + 12 * s, r.centerY() + 11 * s, np);
-            String cs = cnt == 0 ? "–" : "×" + cnt;
-            monoSmall.setColor(cnt == 0 ? Ui.TEXT_3 : Ui.TEXT_2);
-            c.drawText(cs, r.right - 10 * s - monoSmall.measureText(cs), r.centerY() + 8 * s, monoSmall);
-            monoSmall.setColor(Ui.TEXT_2);
+            drawGroup(c, i);
+        }
+        boolean fixed = speed < 0;
+        cmd(c, bSlower, -1, 10, str(R.string.deck_c_slower), fixed || speed >= 6);
+        barBack(c, bSpeed, pressed(bSpeed));
+        int acc = accent();
+        text(c, speedLabel(), bSpeed.r.centerX(), bSpeed.r.top + 4, 1, fixed ? Ui.alpha(acc, 0.4f) : 0xFFFFFFFF, 0, false);
+        caption(c, str(R.string.deck_c_speed), bSpeed.r.centerX(), bSpeed.r.bottom - 4, 5.6f, Ui.alpha(acc, 0.85f), 48);
+        cmd(c, bFaster, -1, 11, str(R.string.deck_c_faster), fixed || speed <= 1);
+        cmd(c, bSave, -1, 12, str(R.string.deck_c_save), fixed);
+        cmd(c, bLoad, -1, 13, str(R.string.deck_c_load), fixed || (misc & ThorBridge.M_QUICK_SAVE) == 0);
+    }
+
+    /** GameSpeed 0..6 as the Options slider counts it: logic frames per second / 15. */
+    private String speedLabel() {
+        if (speed < 0) {
+            return "-";
+        }
+        float m = (speed <= 0 ? 60f : 60f / speed) / 15f;
+        return (m == Math.round(m) ? String.valueOf(Math.round(m)) : String.format(Locale.ROOT, "%.1f", m)) + "x";
+    }
+
+    /** The bar's own backdrop: the first pixel column of a command button, stretched (black with its lines). */
+    private void barBack(Canvas c, Btn b, boolean down) {
+        RectF r = b.r;
+        Bitmap bg = art(ThorBridge.CH_BUTTON0, 0);
+        if (bg != null) {
+            src.set(0, 0, 1, bg.getHeight());
+            c.drawBitmap(bg, src, r, bmpPaint);
+        } else {
+            paint.setColor(0xFF000000);
+            c.drawRect(r, paint);
+            paint.setColor(Ui.alpha(accent(), 0.35f));
+            c.drawRect(r.left, r.bottom - 1, r.right, r.bottom, paint);
+        }
+        if (down) {
+            paint.setColor(Ui.alpha(accent(), 0.28f));
+            c.drawRect(r, paint);
         }
     }
 
-    private void group(int g, boolean save) {
-        ThorBridge.push(ThorBridge.CMD_GROUP, g + 1, save ? 1 : 0, 0);
-        lastAction = save ? getContext().getString(R.string.deck_act_group_set, g + 1)
-                : getContext().getString(R.string.deck_act_group, g + 1);
-        lastActionAt = SystemClock.uptimeMillis();
-        flashButton = groupRect[g];
-        flashAt = SystemClock.uptimeMillis();
-        invalidate();
+    private void cmd(Canvas c, Btn b, int artButton, int glyph, String label, boolean dim) {
+        RectF r = b.r;
+        boolean down = pressed(b);
+        int acc = accent();
+        Bitmap a = artButton >= 0 ? art(ThorBridge.CH_BUTTON0 + artButton, down ? 1 : 0) : null;
+        barBack(c, b, down);
+        if (a != null) { // the art's icon band, moved up to make room for the caption
+            src.set(0, 6, a.getWidth(), 27);
+            dst.set(r.left, r.top + 2, r.left + a.getWidth(), r.top + 23);
+            bmpPaint.setAlpha(dim ? 90 : 255);
+            c.drawBitmap(a, src, dst, bmpPaint);
+            bmpPaint.setAlpha(255);
+        } else {
+            c.save();
+            c.translate(r.centerX() - 8.4f, r.top + 3.5f);
+            c.scale(0.6f, 0.6f);
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(2.6f);
+            paint.setStrokeCap(Paint.Cap.ROUND);
+            paint.setStrokeJoin(Paint.Join.ROUND);
+            paint.setColor(dim ? Ui.alpha(acc, 0.3f) : acc);
+            c.drawPath(glyph(glyph), paint);
+            paint.setStyle(Paint.Style.FILL);
+            c.restore();
+        }
+        caption(c, label, r.centerX(), r.bottom - 4, 5.6f, Ui.alpha(acc, dim ? 0.4f : 0.9f), 48);
     }
 
-    private void drawSupers(Canvas c) {
-        int acc = Ui.accent(faction);
-        Ui.panel(c, superPanel, Ui.RADIUS * s, Ui.PANEL, Ui.LINE, paint);
-        float x = superPanel.left + 18 * s;
-        c.drawText(supers.isEmpty() ? str(R.string.deck_status) : str(R.string.deck_super), x, superPanel.top + 34 * s,
-                microLabel);
-        if (supers.isEmpty()) {
-            // Status line instead: what the deck is waiting for.
-            String headline, detail;
-            if ((flags & ThorBridge.F_PLACING) != 0) {
-                headline = str(R.string.deck_h_place);
-                detail = str(R.string.deck_d_place);
-            } else if ((flags & ThorBridge.F_TARGETING) != 0) {
-                headline = str(R.string.deck_h_target);
-                detail = str(R.string.deck_d_target);
-            } else if ((flags & ThorBridge.F_REPAIR) != 0) {
-                headline = str(R.string.deck_h_repair);
-                detail = str(R.string.deck_d_repair);
-            } else if ((flags & ThorBridge.F_SELL) != 0) {
-                headline = str(R.string.deck_h_sell);
-                detail = str(R.string.deck_d_sell);
-            } else if (!lastAction.isEmpty() && SystemClock.uptimeMillis() - lastActionAt < 4000) {
-                headline = lastAction;
-                detail = str(R.string.deck_d_action);
-            } else {
-                headline = str(R.string.deck_h_ready);
-                detail = str(R.string.deck_d_ready);
-            }
-            Paint hp = Ui.text(Ui.interSemi(), 26 * s, Ui.TEXT);
-            c.drawText(headline, x, superPanel.top + 84 * s, hp);
-            drawWrapped(c, detail, x, superPanel.top + 120 * s, superPanel.width() - 36 * s, bodyDim, 30 * s, 4);
-            return;
+    private static final String[] ROMAN = {"I", "II", "III", "IV", "V"};
+
+    /** Control group: ring and numeral as on the bar's own team buttons; count of living members. */
+    private void drawGroup(Canvas c, int i) {
+        Btn b = bGroup[i];
+        RectF r = b.r;
+        int cnt = groupCount[i], acc = accent();
+        boolean sel = cnt > 0 && groupSel[i] == cnt;
+        barBack(c, b, pressed(b));
+        float cx = r.centerX(), cy = r.top + 12.5f;
+        int col = cnt == 0 ? Ui.alpha(acc, 0.35f) : acc;
+        if (sel) {
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(acc);
+            c.drawOval(cx - 12, cy - 9, cx + 12, cy + 9, paint);
         }
-        float rowH = 82 * s, y = superPanel.top + 52 * s;
-        for (Super sw : supers) {
-            if (y + rowH > superPanel.bottom) {
+        paint.setStyle(Paint.Style.STROKE);
+        paint.setStrokeWidth(1.6f);
+        paint.setColor(col);
+        c.drawOval(cx - 12, cy - 9, cx + 12, cy + 9, paint);
+        paint.setStyle(Paint.Style.FILL);
+        textPaint.setTypeface(Ui.interBold());
+        textPaint.setTextSize(11);
+        textPaint.setLetterSpacing(0.06f);
+        textPaint.setColor(sel ? 0xFF000000 : col);
+        c.drawText(ROMAN[i], cx - textPaint.measureText(ROMAN[i]) / 2 + 0.3f, cy + 4, textPaint);
+        caption(c, cnt == 0 ? str(R.string.deck_group_empty) : getContext().getString(R.string.deck_group_units, cnt), cx,
+                r.bottom - 4, 5.6f, Ui.alpha(acc, cnt == 0 ? 0.4f : 0.9f), 48);
+    }
+
+    // Own icons on a 28x28 grid, in the line style of the bar's art.
+    private final Path[] glyphs = new Path[14];
+
+    private Path glyph(int i) {
+        if (glyphs[i] != null) {
+            return glyphs[i];
+        }
+        Path p = new Path();
+        switch (i) {
+            case 0: // stop
+                p.addCircle(14, 14, 10, Path.Direction.CW);
+                p.moveTo(7, 21);
+                p.lineTo(21, 7);
                 break;
-            }
-            RectF row = new RectF(superPanel.left + 12 * s, y, superPanel.right - 12 * s, y + rowH - 8 * s);
-            sw.bounds.set(row);
-            boolean ready = sw.ready != 0;
-            boolean flash = flashKey == sw.key;
-            Ui.panel(c, row, Ui.RADIUS_SM * s, ready ? Ui.alpha(Ui.GREEN, 0.10f) : (flash ? Ui.PANEL_2 : Ui.BG_2),
-                    ready ? Ui.GREEN : Ui.LINE, paint);
-            RectF cam = new RectF(row.left + 8 * s, row.top + 8 * s, row.left + 8 * s + (row.height() - 16 * s) * 1.25f,
-                    row.bottom - 8 * s);
-            Bitmap b = cameo(sw.key);
-            if (b != null) {
-                c.drawBitmap(b, null, cam, bmpPaint);
-            } else {
-                paint.setColor(Ui.PANEL_2);
-                c.drawRect(cam, paint);
-            }
-            float tx = cam.right + 14 * s;
-            String nm = superName(sw.key & 0xFFFF);
-            Paint np = Ui.text(Ui.interSemi(), 20 * s, Ui.TEXT);
-            c.drawText(ellipsize(nm, np, row.right - tx - 110 * s), tx, row.top + 30 * s, np);
-            String right = ready ? str(R.string.deck_ready) : String.format(Locale.ROOT, "%d:%02d", sw.seconds / 60,
-                    sw.seconds % 60);
-            Paint rp = ready ? Ui.label(15 * s, Ui.GREEN) : Ui.text(Ui.monoBold(), 22 * s, Ui.TEXT_2);
-            c.drawText(right, row.right - 12 * s - rp.measureText(right), row.top + 30 * s, rp);
-            RectF bar = new RectF(tx, row.bottom - 22 * s, row.right - 12 * s, row.bottom - 16 * s);
-            Ui.bar(c, bar, sw.progress / 1000f, ready ? Ui.GREEN : acc, ready ? 0xFF8FE3B4 : Ui.accent2(faction), paint);
-            y += rowH;
+            case 1: // guard: shield
+                p.moveTo(14, 3);
+                p.lineTo(24, 7);
+                p.lineTo(24, 14);
+                p.quadTo(24, 22, 14, 26);
+                p.quadTo(4, 22, 4, 14);
+                p.lineTo(4, 7);
+                p.close();
+                break;
+            case 2: // deploy: down into a base line
+                p.moveTo(14, 3);
+                p.lineTo(14, 18);
+                p.moveTo(7, 11);
+                p.lineTo(14, 18);
+                p.lineTo(21, 11);
+                p.moveTo(4, 24);
+                p.lineTo(24, 24);
+                break;
+            case 3: // type select: a block of dots
+                for (int q = 0; q < 9; q++) {
+                    p.addCircle(6 + (q % 3) * 8, 6 + (q / 3) * 8, 1.6f, Path.Direction.CW);
+                }
+                break;
+            case 4: // cheer: star
+                for (int q = 0; q < 5; q++) {
+                    double a1 = Math.toRadians(-90 + q * 144);
+                    float px = 14 + (float) Math.cos(a1) * 11, py = 14 + (float) Math.sin(a1) * 11;
+                    if (q == 0) {
+                        p.moveTo(px, py);
+                    } else {
+                        p.lineTo(px, py);
+                    }
+                }
+                p.close();
+                break;
+            case 5: // scatter: four arrows outward
+                for (int q = 0; q < 4; q++) {
+                    float dx = q % 2 == 0 ? -1 : 1, dy = q < 2 ? -1 : 1;
+                    p.moveTo(14 + dx * 4, 14 + dy * 4);
+                    p.lineTo(14 + dx * 11, 14 + dy * 11);
+                    p.moveTo(14 + dx * 11, 14 + dy * 5);
+                    p.lineTo(14 + dx * 11, 14 + dy * 11);
+                    p.lineTo(14 + dx * 5, 14 + dy * 11);
+                }
+                break;
+            case 6: // army: three rank chevrons
+                for (int q = 0; q < 3; q++) {
+                    p.moveTo(4, 9 + q * 7);
+                    p.lineTo(14, 3 + q * 7);
+                    p.lineTo(24, 9 + q * 7);
+                }
+                break;
+            case 7: // next unit: arrow to a bar
+                p.moveTo(3, 14);
+                p.lineTo(19, 14);
+                p.moveTo(12, 6);
+                p.lineTo(20, 14);
+                p.lineTo(12, 22);
+                p.moveTo(25, 5);
+                p.lineTo(25, 23);
+                break;
+            case 8: // base: house
+                p.moveTo(3, 14);
+                p.lineTo(14, 4);
+                p.lineTo(25, 14);
+                p.moveTo(6, 12);
+                p.lineTo(6, 24);
+                p.lineTo(22, 24);
+                p.lineTo(22, 12);
+                p.moveTo(12, 24);
+                p.lineTo(12, 17);
+                p.lineTo(16, 17);
+                p.lineTo(16, 24);
+                break;
+            case 9: // alert: warning triangle
+                p.moveTo(14, 3);
+                p.lineTo(26, 24);
+                p.lineTo(2, 24);
+                p.close();
+                p.moveTo(14, 10);
+                p.lineTo(14, 17);
+                p.moveTo(14, 20.5f);
+                p.lineTo(14, 21);
+                break;
+            case 10: // slower
+                p.moveTo(22, 5);
+                p.lineTo(11, 14);
+                p.lineTo(22, 23);
+                p.moveTo(13, 5);
+                p.lineTo(2, 14);
+                p.lineTo(13, 23);
+                break;
+            case 11: // faster
+                p.moveTo(6, 5);
+                p.lineTo(17, 14);
+                p.lineTo(6, 23);
+                p.moveTo(15, 5);
+                p.lineTo(26, 14);
+                p.lineTo(15, 23);
+                break;
+            case 12: // save: arrow into a tray
+                p.moveTo(14, 2);
+                p.lineTo(14, 16);
+                p.moveTo(8, 10);
+                p.lineTo(14, 16);
+                p.lineTo(20, 10);
+                p.moveTo(3, 17);
+                p.lineTo(3, 24);
+                p.lineTo(25, 24);
+                p.lineTo(25, 17);
+                break;
+            default: // load: arrow out of a tray
+                p.moveTo(14, 17);
+                p.lineTo(14, 3);
+                p.moveTo(8, 9);
+                p.lineTo(14, 3);
+                p.lineTo(20, 9);
+                p.moveTo(3, 17);
+                p.lineTo(3, 24);
+                p.lineTo(25, 24);
+                p.lineTo(25, 17);
+                break;
         }
+        glyphs[i] = p;
+        return p;
+    }
+
+    // ---- status line
+
+    private void drawStatus(Canvas c) {
+        int acc = accent();
+        paint.setColor(0xFF000000);
+        c.drawRect(SB, STATUS_Y, AW, ah, paint);
+        String headline, detail;
+        if ((flags & ThorBridge.F_PLACING) != 0) {
+            headline = str(R.string.deck_h_place);
+            detail = str(R.string.deck_d_place);
+        } else if ((flags & ThorBridge.F_TARGETING) != 0) {
+            headline = str(R.string.deck_h_target);
+            detail = str(R.string.deck_d_target);
+        } else if ((flags & ThorBridge.F_REPAIR) != 0) {
+            headline = str(R.string.deck_h_repair);
+            detail = str(R.string.deck_d_repair);
+        } else if ((flags & ThorBridge.F_SELL) != 0) {
+            headline = str(R.string.deck_h_sell);
+            detail = str(R.string.deck_d_sell);
+        } else if (!lastAction.isEmpty() && SystemClock.uptimeMillis() - lastActionAt < 4000) {
+            headline = lastAction;
+            detail = str(R.string.deck_d_ready);
+        } else {
+            headline = selected > 0 ? getContext().getString(R.string.deck_h_selected, selected) : str(R.string.deck_h_ready);
+            detail = str(R.string.deck_d_ready);
+        }
+        float x = SB + 6;
+        textPaint.setTypeface(Ui.interBold());
+        textPaint.setLetterSpacing(0f);
+        textPaint.setTextSize(8.6f);
+        textPaint.setColor(acc);
+        c.drawText(headline, x, STATUS_Y + 10.5f, textPaint);
+        boolean low = powerDrain > powerOut;
+        String pw = str(low ? R.string.deck_low_power : R.string.deck_power) + " " + powerOut + " / " + powerDrain;
+        textPaint.setColor(low ? 0xFFFF6A5A : 0xFFA7ABB3);
+        textPaint.setTextSize(6.6f);
+        c.drawText(pw, AW - 6 - textPaint.measureText(pw), STATUS_Y + 10, textPaint);
+        textPaint.setTypeface(Ui.interMedium());
+        textPaint.setColor(0xFFA7ABB3);
+        float w = textPaint.measureText(detail), max = AW - x - 6;
+        if (w > max) {
+            textPaint.setTextSize(6.6f * max / w);
+        }
+        c.drawText(detail, x, STATUS_Y + 20, textPaint);
     }
 
     private String superName(int type) {
@@ -947,23 +1233,10 @@ public class ThorDeck extends View {
         }
     }
 
-    private void drawWrapped(Canvas c, String text, float x, float y, float maxW, Paint p, float lh, int maxLines) {
-        StringBuilder line = new StringBuilder();
-        int lines = 0;
-        for (String word : text.split(" ")) {
-            String trial = line.length() == 0 ? word : line + " " + word;
-            if (p.measureText(trial) > maxW && line.length() > 0) {
-                c.drawText(line.toString(), x, y, p);
-                y += lh;
-                if (++lines >= maxLines) {
-                    return;
-                }
-                line = new StringBuilder(word);
-            } else {
-                line = new StringBuilder(trial);
-            }
-        }
-        c.drawText(line.toString(), x, y, p);
+    private void say(String action) {
+        lastAction = action;
+        lastActionAt = SystemClock.uptimeMillis();
+        invalidate();
     }
 
     // ------------------------------------------------------------------ controller
@@ -973,8 +1246,8 @@ public class ThorDeck extends View {
         if (!inGame) {
             return;
         }
-        for (int k = 1; k <= 4; k++) {
-            int t = ((activeTab + delta * k) % 4 + 4) % 4;
+        for (int n = 1; n <= 4; n++) {
+            int t = ((activeTab + delta * n) % 4 + 4) % 4;
             if ((tabs & (1 << t)) != 0) {
                 ThorBridge.push(ThorBridge.CMD_TAB, t, 0, 0);
                 activeTab = t;
@@ -990,14 +1263,78 @@ public class ThorDeck extends View {
         ThorBridge.push(ThorBridge.CMD_BUILD, it.tab, it.key & 0xFFFF, right ? 1 : 0);
         String n = name(it.key);
         if (right) {
-            lastAction = it.state == ThorBridge.ST_ON_HOLD || it.state == ThorBridge.ST_READY
-                    ? getContext().getString(R.string.deck_act_cancel, n) : getContext().getString(R.string.deck_act_hold, n);
+            say(it.state == ThorBridge.ST_ON_HOLD || it.state == ThorBridge.ST_READY
+                    ? getContext().getString(R.string.deck_act_cancel, n) : getContext().getString(R.string.deck_act_hold, n));
         } else {
-            lastAction = it.state == ThorBridge.ST_READY ? getContext().getString(R.string.deck_act_place, n) : n;
+            say(it.state == ThorBridge.ST_READY ? getContext().getString(R.string.deck_act_place, n) : n);
         }
-        lastActionAt = SystemClock.uptimeMillis();
         flashKey = it.key;
         flashAt = SystemClock.uptimeMillis();
+    }
+
+    private void group(int g, boolean save) {
+        ThorBridge.push(ThorBridge.CMD_GROUP, g + 1, save ? 1 : 0, 0);
+        say(save ? getContext().getString(R.string.deck_act_group_set, g + 1)
+                : getContext().getString(R.string.deck_act_group, g + 1));
+        flashBtn = bGroup[g];
+        flashAt = SystemClock.uptimeMillis();
+    }
+
+    private void press(Btn b) {
+        flashBtn = b;
+        flashAt = SystemClock.uptimeMillis();
+        switch (b.kind) {
+            case K_MENU:
+                ThorBridge.push(ThorBridge.CMD_MENU, 0, 0, 0);
+                break;
+            case K_DIPLO:
+                ThorBridge.push(ThorBridge.CMD_DIPLOMACY, 0, 0, 0);
+                break;
+            case K_REPAIR:
+                ThorBridge.push(ThorBridge.CMD_REPAIR, 0, 0, 0);
+                break;
+            case K_SELL:
+                ThorBridge.push(ThorBridge.CMD_SELL, 0, 0, 0);
+                break;
+            case K_TAB:
+                if ((tabs & (1 << b.arg)) != 0) {
+                    ThorBridge.push(ThorBridge.CMD_TAB, b.arg, 0, 0);
+                    activeTab = b.arg;
+                    say(str(TAB_LABELS[b.arg]));
+                }
+                break;
+            case K_ZOOM:
+                cycleZoom();
+                break;
+            case K_HOT:
+                ThorBridge.push(ThorBridge.CMD_HOT, HOTS[b.arg][0], 0, 0);
+                say(str(HOTS[b.arg][2]));
+                break;
+            case K_GROUP:
+                group(b.arg, false);
+                break;
+            case K_SLOWER:
+            case K_FASTER:
+            case K_SPEED:
+                if (speed >= 0) {
+                    int v = b.kind == K_SPEED ? 4 : Math.max(1, Math.min(6, speed + (b.kind == K_SLOWER ? 1 : -1)));
+                    ThorBridge.push(ThorBridge.CMD_SPEED, v, 0, 0);
+                    speed = v;
+                    say(str(R.string.deck_c_speed) + " " + speedLabel());
+                }
+                break;
+            case K_SAVE:
+                if (speed >= 0) {
+                    ThorBridge.push(ThorBridge.CMD_QUICK_SAVE, 0, 0, 0);
+                    say(str(R.string.deck_act_saved));
+                }
+                break;
+            case K_LOAD:
+                say(str((misc & ThorBridge.M_QUICK_SAVE) != 0 ? R.string.deck_act_load_hold : R.string.deck_act_no_save));
+                break;
+            default:
+                break;
+        }
         invalidate();
     }
 
@@ -1005,20 +1342,31 @@ public class ThorDeck extends View {
         if (!radarOnline()) {
             return;
         }
-        RectF dst = radarDst();
-        float u = (x - dst.left) / dst.width(), v = (y - dst.top) / dst.height();
+        RectF d = radarDst();
+        float u = (x - d.left) / d.width(), v = (y - d.top) / d.height();
         if (u < 0 || v < 0 || u > 1 || v > 1) {
             return;
         }
         ThorBridge.push(ThorBridge.CMD_RADAR, Math.round(u * 65535), Math.round(v * 65535), 0);
     }
 
+    private void release() {
+        handler.removeCallbacks(longPress);
+        downItem = null;
+        downSuper = null;
+        downRadar = false;
+        downBtn = null;
+        downStrip = false;
+        invalidate();
+    }
+
     @Override
     public boolean onTouchEvent(MotionEvent e) {
         if (!inGame) {
+            release(); // a load or the end of the game took the deck away mid-press
             return true;
         }
-        float x = e.getX(), y = e.getY();
+        float x = e.getX() / k, y = e.getY() / k; // art pixels
         switch (e.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
                 downY = y;
@@ -1026,33 +1374,27 @@ public class ThorDeck extends View {
                 scrolled = longFired = false;
                 downItem = null;
                 downSuper = null;
-                downButton = null;
-                downTab = -1;
-                downGroup = -1;
-                downGrid = gridPanel.contains(x, y);
-                downRadar = radarArea.contains(x, y);
+                downBtn = null;
+                downStrip = stripArea.contains(x, y);
+                downRadar = radarView.contains(x, y);
                 if (downRadar) {
                     radarAt(x, y);
                     lastRadarCmd = SystemClock.uptimeMillis();
-                } else if (btnRepair.contains(x, y)) {
-                    downButton = btnRepair;
-                } else if (btnSell.contains(x, y)) {
-                    downButton = btnSell;
-                } else if (btnMenu.contains(x, y)) {
-                    downButton = btnMenu;
-                } else if (btnZoom.contains(x, y)) {
-                    downButton = btnZoom;
-                } else if (groupPanel.contains(x, y)) {
-                    for (int i = 0; i < 5; i++) {
-                        if (groupRect[i].contains(x, y)) {
-                            downGroup = i;
+                } else if (downStrip) {
+                    for (Item it : hitItems) {
+                        if (it.bounds.contains(x, y)) {
+                            downItem = it;
                             handler.postDelayed(longPress, 450);
+                            break;
                         }
                     }
                 } else {
-                    for (int i = 0; i < 4; i++) {
-                        if (tabRect[i].contains(x, y)) {
-                            downTab = i;
+                    for (Btn b : btns) {
+                        if (b.r.contains(x, y)) {
+                            downBtn = b;
+                            if (b.kind == K_GROUP || b.kind == K_LOAD) {
+                                handler.postDelayed(longPress, b.kind == K_LOAD ? 700 : 450);
+                            }
                         }
                     }
                     for (Super sw : hitSupers) {
@@ -1060,16 +1402,8 @@ public class ThorDeck extends View {
                             downSuper = sw;
                         }
                     }
-                    if (downGrid) {
-                        for (Item it : hitItems) {
-                            if (gridArea.contains(x, y) && it.bounds.contains(x, y)) {
-                                downItem = it;
-                                handler.postDelayed(longPress, 450);
-                                break;
-                            }
-                        }
-                    }
                 }
+                invalidate();
                 return true;
             case MotionEvent.ACTION_MOVE:
                 if (downRadar) {
@@ -1078,8 +1412,8 @@ public class ThorDeck extends View {
                         radarAt(x, y);
                         lastRadarCmd = now;
                     }
-                } else if (downGrid) {
-                    if (!scrolled && Math.abs(y - downY) > 24 * s) {
+                } else if (downStrip) {
+                    if (!scrolled && Math.abs(y - downY) > 9) {
                         scrolled = true;
                         handler.removeCallbacks(longPress);
                     }
@@ -1091,56 +1425,23 @@ public class ThorDeck extends View {
                 lastY = y;
                 return true;
             case MotionEvent.ACTION_UP:
-                handler.removeCallbacks(longPress);
-                if (downButton != null && downButton.contains(x, y)) {
-                    flashButton = downButton;
-                    flashAt = SystemClock.uptimeMillis();
-                    if (downButton == btnRepair) {
-                        ThorBridge.push(ThorBridge.CMD_REPAIR, 0, 0, 0);
-                    } else if (downButton == btnSell) {
-                        ThorBridge.push(ThorBridge.CMD_SELL, 0, 0, 0);
-                    } else if (downButton == btnZoom) {
-                        cycleZoom();
-                    } else {
-                        ThorBridge.push(ThorBridge.CMD_MENU, 0, 0, 0);
-                    }
-                    invalidate();
-                } else if (downGroup >= 0 && !longFired && groupRect[downGroup].contains(x, y)) {
-                    group(downGroup, false);
-                } else if (downTab >= 0 && tabRect[downTab].contains(x, y)) {
-                    if ((tabs & (1 << downTab)) != 0) {
-                        ThorBridge.push(ThorBridge.CMD_TAB, downTab, 0, 0);
-                        activeTab = downTab;
-                        invalidate();
-                    }
+                if (downBtn != null && !longFired && downBtn.r.contains(x, y)) {
+                    press(downBtn);
                 } else if (downSuper != null && downSuper.bounds.contains(x, y)) {
                     ThorBridge.push(ThorBridge.CMD_SUPER, downSuper.key & 0xFFFF, 0, 0);
                     flashKey = downSuper.key;
                     flashAt = SystemClock.uptimeMillis();
-                    invalidate();
+                    say(superName(downSuper.key & 0xFFFF));
                 } else if (downItem != null && !longFired && !scrolled && downItem.bounds.contains(x, y)) {
                     // Buildings: a second tap while building puts it on hold (the right click).
                     // Units: every tap queues one more, like a left click on the sidebar.
                     boolean building = downItem.tab < 2;
                     click(downItem, building && downItem.state == ThorBridge.ST_BUILDING);
                 }
-                downItem = null;
-                downSuper = null;
-                downRadar = false;
-                downButton = null;
-                downTab = -1;
-                downGroup = -1;
-                downGrid = false;
+                release();
                 return true;
             case MotionEvent.ACTION_CANCEL:
-                handler.removeCallbacks(longPress);
-                downItem = null;
-                downSuper = null;
-                downRadar = false;
-                downButton = null;
-                downTab = -1;
-                downGroup = -1;
-                downGrid = false;
+                release();
                 return true;
             default:
                 return true;

@@ -32,7 +32,7 @@
     <string name="deck_side_soviet">SOWJETS</string>
     <string name="deck_side_yuri">YURI</string>
     <string name="deck_h_place">Gebäude platzieren</string>
-    <string name="deck_d_place">Oben auf die Karte tippen. Dort lange drücken bricht ab.</string>
+    <string name="deck_d_place">Oben auf den Bauplatz tippen, zum Bauen noch einmal tippen. Das X dort bricht ab.</string>
     <string name="deck_h_target">Ziel wählen</string>
     <string name="deck_d_target">Oben auf das Ziel tippen.</string>
     <string name="deck_h_repair">Reparaturmodus</string>
@@ -40,7 +40,6 @@
     <string name="deck_h_sell">Verkaufsmodus</string>
     <string name="deck_d_sell">Oben auf ein Gebäude tippen. VERKAUFEN erneut tippen zum Beenden.</string>
     <string name="deck_h_ready">Bereit für Befehle</string>
-    <string name="deck_d_ready">Cameo tippen = bauen, BEREIT-Gebäude tippen = platzieren. Lange drücken = anhalten, dann abbrechen. L1 / R1 wechseln den Reiter.</string>
     <string name="deck_d_action">Befehl gesendet</string>
     <string name="deck_act_hold">Angehalten: %1$s</string>
     <string name="deck_act_cancel">Abgebrochen: %1$s</string>
@@ -110,4 +109,29 @@
     <string name="files_credits">Mitwirkende &amp; Lizenzen</string>
     <string name="files_footer">RA2 Engine von Omar El Arab · Yuri-Fraktion von Bryle13 (RA2AndroidPort) · Thor-Port von harmssi. Keine Verbindung zu EA.</string>
     <string name="files_after_crash">Nach einem Absturz erst „Spielbericht teilen“ antippen, dann neu starten.</string>
+    <string name="deck_c_stop">STOPP</string>
+    <string name="deck_c_guard">BEWACHEN</string>
+    <string name="deck_c_deploy">ENTFALTEN</string>
+    <string name="deck_c_type">ALLE DES TYPS</string>
+    <string name="deck_c_cheer">JUBELN</string>
+    <string name="deck_c_scatter">VERTEILEN</string>
+    <string name="deck_c_army">ARMEE</string>
+    <string name="deck_c_next">NÄCHSTE</string>
+    <string name="deck_c_base">BASIS</string>
+    <string name="deck_c_alert">LETZTER ALARM</string>
+    <string name="deck_c_slower">LANGSAMER</string>
+    <string name="deck_c_faster">SCHNELLER</string>
+    <string name="deck_c_speed">TEMPO</string>
+    <string name="deck_c_save">SPEICHERN</string>
+    <string name="deck_c_load">HALTEN: LADEN</string>
+    <string name="deck_allies">BÜNDNISSE</string>
+    <string name="deck_briefing">AUFTRAG</string>
+    <string name="deck_group_empty">HALTEN = SETZEN</string>
+    <string name="deck_group_units">%1$d EINHEITEN</string>
+    <string name="deck_h_selected">%1$d ausgewählt</string>
+    <string name="deck_act_saved">Schnellspeicherstand geschrieben</string>
+    <string name="deck_act_loading">Schnellspeicherstand wird geladen</string>
+    <string name="deck_act_load_hold">LADEN gedrückt halten, um den Schnellspeicherstand zu laden</string>
+    <string name="deck_act_no_save">Noch kein Schnellspeicherstand</string>
+    <string name="deck_d_ready">Cameo tippen = bauen, halten = anhalten, nochmal halten = abbrechen. Gruppen: halten = setzen, tippen = wählen, nochmal = hinsehen.</string>
 </resources>

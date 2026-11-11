@@ -33,7 +33,7 @@ struct Platform::Impl {
     double pad_x = -1, pad_y = -1;   // virtual cursor (logical px)
     uint32_t pad_tick = 0;
     uint32_t pad_used_at = 0;
-    bool pad_l3 = false;
+    bool pad_l3 = false, pad_l2 = false, pad_r2 = false;
     std::deque<InputEvent> pad_q;
     // Thor RA2: in the shell menus the D-pad moves a focus (run_scene_driver
     // snaps the cursor to the next button) instead of scrolling a map.
@@ -99,6 +99,14 @@ struct Platform::Impl {
             }
             nav_held = dir;
             return;
+        }
+        {   // Thor RA2: the triggers as keys on their press -- L2 = T (all of the selected type), R2 = G (guard)
+            const bool l2 = SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_TRIGGERLEFT) > 16000;
+            const bool r2 = SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_TRIGGERRIGHT) > 16000;
+            if (l2 && !pad_l2) pad_key(SDLK_t, now);
+            if (r2 && !pad_r2) pad_key(SDLK_g, now);
+            pad_l2 = l2;
+            pad_r2 = r2;
         }
         if (SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_DPAD_LEFT)) rx = -1;
         if (SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_DPAD_RIGHT)) rx = 1;
@@ -543,6 +551,7 @@ bool Platform::poll(InputEvent& ev) {
                         case SDL_CONTROLLER_BUTTON_BACK: p_->pad_key(SDLK_h, t); break;
                         case SDL_CONTROLLER_BUTTON_X: p_->pad_key(SDLK_d, t); break;
                         case SDL_CONTROLLER_BUTTON_Y: p_->pad_key(SDLK_s, t); break;
+                        case SDL_CONTROLLER_BUTTON_RIGHTSTICK: p_->pad_key(SDLK_p, t); break;   // Thor RA2: R3 = whole army
                         default: break;
                     }
                     break;

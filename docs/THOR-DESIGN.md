@@ -6,6 +6,11 @@ Gilt für das Deck (unterer Bildschirm), den Thor-Launcher (beide Bildschirme) u
 **Eine Quelle:** `android/app/src/main/java/de/harmssi/thorra2/Ui.java`. Farben, Maße, Schriften und Zeichenhelfer stehen
 nur dort. `ThorDeck` und `ThorLauncher` benutzen sie, und andere Ports kopieren diese Datei.
 
+> **Ab 0.4.0:** Im Spiel zeichnet das Deck nicht mehr diese Designsprache, sondern die Seitenleiste der eigenen Seite
+> aus den Spieldateien des Nutzers (Leistengrafik, HUD-Schrift, Befehlsleisten-Knöpfe; `ThorDeck`, `engine/thor_scene.inc`).
+> Die Designsprache gilt weiter für den Launcher, den Standby-Bildschirm des Decks und als Ersatz, wenn die Grafik
+> nicht lesbar ist (Stahlplatten in der Farbe der Seite).
+
 ## Grundsätze
 
 - Fast schwarze Flächen, ruhige Panels mit 1-px-Linien, viel Luft.

@@ -31,17 +31,30 @@ enum Command : int {
     kCmdTab = 6,       // a = tab (0..3)
     kCmdSuper = 7,     // a = SuperweaponType: arm targeting when READY (sidebar SW slot)
     kCmdGroup = 8,     // a = control group 1..5, b = 1 TeamCreate_a (Ctrl+n) / 0 TeamSelect_a (n; twice = centre)
+    kCmdHot = 9,       // a = Hot action below, b = argument: the keyboard command's own handler (GameScene::run_hot)
+    kCmdSpeed = 10,    // a = GameSpeed 0 (fastest) .. 6 (slowest), the Options slider's value; single player only
+    kCmdQuickSave = 11, // "Saved Games/THORQUICK.SAV" through save_game; single player only
+    kCmdQuickLoad = 12, // the same file through load_game
+    kCmdDiplomacy = 13, // the sidebar's second cap button: alliances (skirmish) / briefing (campaign)
+};
+// kCmdHot actions = KeyboardMD.ini commands.
+enum Hot : int {
+    kHotStop = 1, kHotGuard, kHotScatter, kHotDeploy, kHotTypeSelect, kHotCombatantSelect, kHotCenterBase,
+    kHotRadarEvent, kHotNextObject, kHotPreviousObject, kHotCheer, kHotCenterView,
 };
 
 struct ThorCommand { int type = 0, a = 0, b = 0, c = 0; };
 
 // Snapshot layout (ints, after the JNI's leading "age in ms"):
 enum : int {
-    kSnapVersion = 1,
+    kSnapVersion = 2,
     kHdrVersion = 0, kHdrInGame, kHdrCredits, kHdrPowerOut, kHdrPowerDrain, kHdrFlags, kHdrFaction,
     kHdrActiveTab, kHdrTabs, kHdrRadarW, kHdrRadarH, kHdrViewX, kHdrViewY, kHdrViewW, kHdrViewH,
     kHdrItems, kHdrSupers, kHdrRadarSerial, kHdrGeneration, kHdrGroups,
-    kHeaderInts = 20,
+    kHdrSpeed,         // GameSpeed 0..6 in effect, -1 = not adjustable (network game)
+    kHdrSelected,      // selected own units
+    kHdrMisc,          // bit 0 quick save exists, bit 1 radar events to jump to, bit 2 campaign, bits 8..15 frames of the radar art
+    kHeaderInts = 24,
     kItemInts = 7,     // key, cost, state, progress 0..1000, queued count, tab, 0
     kSuperInts = 5,    // key, ready, progress 0..1000, seconds left, 0
     kGroupInts = 2,    // per control group 1..kHdrGroups, after the supers: members, members selected
@@ -59,7 +72,15 @@ enum : int {
 };
 enum : int { kStateAvailable = 0, kStateBuilding = 1, kStateOnHold = 2, kStateReady = 3, kStateDisabled = 4 };
 // Cameo / name keys: (kind << 16) | index
-enum : int { kKindBuilding = 0, kKindUnit = 1, kKindSuper = 2 };
+// kKindChrome: index = (piece << 8) | frame, a piece of the side's own sidebar art (index 0 of
+// the palette = transparent). kKindGlyph: index = character of the HUD font (white, tinted by the deck).
+enum : int { kKindBuilding = 0, kKindUnit = 1, kKindSuper = 2, kKindChrome = 3, kKindGlyph = 4 };
+enum : int {
+    kChCredits = 0, kChTop, kChRadar, kChSide1, kChSide2, kChSide3, kChTab0, kChTab1, kChTab2, kChTab3,
+    kChRepair, kChSell, kChPowerP, kChOptBtn, kChDiploBtn, kChAddon, kChSideBttn,
+    kChButton0,   // button00.shp .. button11.shp: the advanced command bar
+    kChCount = kChButton0 + 12,
+};
 
 bool dual();                       // deck on a second screen: hide the sidebar
 void set_dual(bool on);

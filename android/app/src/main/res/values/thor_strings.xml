@@ -32,7 +32,7 @@
     <string name="deck_side_soviet">SOVIETS</string>
     <string name="deck_side_yuri">YURI</string>
     <string name="deck_h_place">Place the building</string>
-    <string name="deck_d_place">Tap the map on the top screen. Long-press there to cancel.</string>
+    <string name="deck_d_place">Tap the spot on the top screen, tap it again to build. The X there cancels.</string>
     <string name="deck_h_target">Pick a target</string>
     <string name="deck_d_target">Tap the target on the top screen.</string>
     <string name="deck_h_repair">Repair mode</string>
@@ -40,7 +40,6 @@
     <string name="deck_h_sell">Sell mode</string>
     <string name="deck_d_sell">Tap a building on the top screen. Tap SELL again to stop.</string>
     <string name="deck_h_ready">Ready for orders</string>
-    <string name="deck_d_ready">Tap a cameo to build, tap a READY building to place it. Long-press = hold, then cancel. L1 / R1 switch tabs.</string>
     <string name="deck_d_action">Order sent</string>
     <string name="deck_act_hold">Hold: %1$s</string>
     <string name="deck_act_cancel">Cancel: %1$s</string>
@@ -110,4 +109,29 @@
     <string name="files_credits">Credits &amp; licences</string>
     <string name="files_footer">RA2 Engine by Omar El Arab · Yuri faction by Bryle13 (RA2AndroidPort) · Thor port by harmssi. Not affiliated with EA.</string>
     <string name="files_after_crash">After a crash, tap Share game report before starting another game.</string>
+    <string name="deck_c_stop">STOP</string>
+    <string name="deck_c_guard">GUARD</string>
+    <string name="deck_c_deploy">DEPLOY</string>
+    <string name="deck_c_type">ALL OF TYPE</string>
+    <string name="deck_c_cheer">CHEER</string>
+    <string name="deck_c_scatter">SCATTER</string>
+    <string name="deck_c_army">ARMY</string>
+    <string name="deck_c_next">NEXT UNIT</string>
+    <string name="deck_c_base">BASE</string>
+    <string name="deck_c_alert">LAST ALERT</string>
+    <string name="deck_c_slower">SLOWER</string>
+    <string name="deck_c_faster">FASTER</string>
+    <string name="deck_c_speed">SPEED</string>
+    <string name="deck_c_save">QUICK SAVE</string>
+    <string name="deck_c_load">HOLD: LOAD</string>
+    <string name="deck_allies">ALLIES</string>
+    <string name="deck_briefing">BRIEFING</string>
+    <string name="deck_group_empty">HOLD = SET</string>
+    <string name="deck_group_units">%1$d UNITS</string>
+    <string name="deck_h_selected">%1$d selected</string>
+    <string name="deck_act_saved">Quick save written</string>
+    <string name="deck_act_loading">Loading the quick save</string>
+    <string name="deck_act_load_hold">Hold LOAD to load the quick save</string>
+    <string name="deck_act_no_save">No quick save yet</string>
+    <string name="deck_d_ready">Tap a cameo to build, hold it to pause, hold again to cancel. Groups: hold = set, tap = pick, tap again = look.</string>
 </resources>

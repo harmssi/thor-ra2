@@ -225,7 +225,10 @@
             hotkeys_ = load_hotkeys();
             hotkeys_ver_ = g_hotkeys_version;
         }
-        const ra2engine::HotBinding b = hotkeys_.lookup(ev.vk, ev.shift, ev.ctrl, ev.alt);
+        return run_hot(hotkeys_.lookup(ev.vk, ev.shift, ev.ctrl, ev.alt), ev.t_ms);
+    }
+    // The bound command itself (also run by the Thor deck's buttons, thor_scene.inc).
+    bool run_hot(const ra2engine::HotBinding b, std::uint32_t t_ms) {
         using C = ra2engine::HotCmd;
         switch (b.cmd) {
             case C::None: return false;
@@ -236,7 +239,7 @@
             case C::DeployObject: deploy_selected(); return true;
             case C::TypeSelect: input_.type_select(); return true;
             case C::TeamCreate: input_.group_create(b.arg); return true;
-            case C::TeamSelect: input_.group_select(b.arg, ev.t_ms); return true;
+            case C::TeamSelect: input_.group_select(b.arg, t_ms); return true;
             case C::TeamAddSelect: input_.group_add_select(b.arg); return true;
             case C::TeamCenter: input_.group_center(b.arg); return true;
             case C::CenterView: input_.center_on_selection(); return true;
@@ -269,7 +272,7 @@
             case C::HealthNav: hotkey_nav(false); return true;
             case C::VeterancyNav: hotkey_nav(true); return true;
             case C::AllToCheer: hotkey_cheer(); return true;
-            case C::CenterOnRadarEvent: hotkey_radar_event(ev.t_ms); return true;
+            case C::CenterOnRadarEvent: hotkey_radar_event(t_ms); return true;
             case C::ScreenCapture: screencap_pending_ = true; return true;
             // W9-05-03 ToggleAlliance [RE: 0x536C50 -> FUN_007309C0] / W9-05-08
             // PlaceBeacon [RE: 0x536DD0 -> FUN_00730B00] / Delete [RE:

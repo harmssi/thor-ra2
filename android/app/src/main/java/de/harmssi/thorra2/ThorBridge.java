@@ -19,14 +19,29 @@ final class ThorBridge {
     static final int CMD_TAB = 6;     // a = tab
     static final int CMD_SUPER = 7;   // a = superweapon type
     static final int CMD_GROUP = 8;   // a = group 1..5, b = 1 save the selection (Ctrl+n) / 0 select (n)
+    static final int CMD_HOT = 9;     // a = HOT_* (the keyboard command's own handler)
+    static final int CMD_SPEED = 10;  // a = GameSpeed 0 (fastest) .. 6 (slowest)
+    static final int CMD_QUICK_SAVE = 11, CMD_QUICK_LOAD = 12;
+    static final int CMD_DIPLOMACY = 13; // alliances (skirmish) / briefing (campaign)
+    static final int HOT_STOP = 1, HOT_GUARD = 2, HOT_SCATTER = 3, HOT_DEPLOY = 4, HOT_TYPE_SELECT = 5,
+            HOT_ARMY = 6, HOT_BASE = 7, HOT_ALERT = 8, HOT_NEXT = 9, HOT_PREVIOUS = 10, HOT_CHEER = 11,
+            HOT_CENTER = 12;
 
     // Snapshot header (after out[0] = age in ms)
     static final int H_VERSION = 0, H_IN_GAME = 1, H_CREDITS = 2, H_POWER_OUT = 3, H_POWER_DRAIN = 4, H_FLAGS = 5,
             H_FACTION = 6, H_TAB = 7, H_TABS = 8, H_RADAR_W = 9, H_RADAR_H = 10, H_VIEW_X = 11, H_VIEW_Y = 12,
-            H_VIEW_W = 13, H_VIEW_H = 14, H_ITEMS = 15, H_SUPERS = 16, H_RADAR_SERIAL = 17, H_GENERATION = 18, H_GROUPS = 19;
-    static final int HEADER = 20, ITEM = 7, SUPER = 5, GROUP = 2; // group: members, selected
+            H_VIEW_W = 13, H_VIEW_H = 14, H_ITEMS = 15, H_SUPERS = 16, H_RADAR_SERIAL = 17, H_GENERATION = 18, H_GROUPS = 19,
+            H_SPEED = 20, H_SELECTED = 21, H_MISC = 22;
+    static final int M_QUICK_SAVE = 1, M_ALERTS = 2, M_CAMPAIGN = 4; // H_MISC; bits 8..15 = radar art frames
+    static final int HEADER = 24, ITEM = 7, SUPER = 5, GROUP = 2; // group: members, selected
     static final int F_RADAR = 1, F_REPAIR = 2, F_SELL = 4, F_PLACING = 8, F_TARGETING = 16, F_LOW_POWER = 32,
             F_RADAR_BUILDING = 64, F_LOCKED = 128, F_PAUSED = 256;
+    // Picture keys: (kind << 16) | index. Chrome = the side's own sidebar art, index = (piece << 8) | frame;
+    // glyph = one character of the game's HUD font (white).
+    static final int KIND_SUPER = 2, KIND_CHROME = 3, KIND_GLYPH = 4;
+    static final int CH_CREDITS = 0, CH_TOP = 1, CH_RADAR = 2, CH_SIDE1 = 3, CH_SIDE2 = 4, CH_SIDE3 = 5, CH_TAB0 = 6,
+            CH_REPAIR = 10, CH_SELL = 11, CH_POWERP = 12, CH_OPTBTN = 13, CH_DIPLOBTN = 14, CH_ADDON = 15,
+            CH_SIDEBTTN = 16, CH_BUTTON0 = 17;
     static final int ST_AVAILABLE = 0, ST_BUILDING = 1, ST_ON_HOLD = 2, ST_READY = 3, ST_DISABLED = 4;
 
     static native void setDualScreen(boolean on);
